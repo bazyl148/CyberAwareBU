@@ -1,0 +1,55 @@
+# Local assistant context (contains personal and environment details)
+CLAUDE.md
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+*.pub
+secrets/
+*.tfvars
+*.tfstate
+*.tfstate.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+build/
+npm-debug.log*
+
+# App data and outputs
+*.db
+*.sqlite
+*.sqlite3
+chroma/
+chroma_db/
+logs/
+*.log
+results/raw/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

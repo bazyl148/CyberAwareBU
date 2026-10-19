@@ -1,0 +1,20 @@
+diff --git a/app/defense/controls/__init__.py b/app/defense/controls/__init__.py
+index ab1d9fa..08f0ddc 100644
+--- a/app/defense/controls/__init__.py
++++ b/app/defense/controls/__init__.py
+@@ -6,6 +6,7 @@ idempotent so tests can ``reset_controls()`` and load profiles again.
+ from __future__ import annotations
+ 
+ from app.defense.control import get_control, register_control
++from app.defense.controls.cyberaware import register_cyberaware_controls
+ from app.defense.controls.input_validate import InputValidateControl
+ from app.defense.controls.intent_classify import IntentClassifyControl
+ from app.defense.controls.mcp_description_scan import McpDescriptionScanControl
+@@ -54,6 +55,7 @@ def ensure_registered() -> None:
+     _register_if_missing(McpToolAllowlistControl())
+     _register_if_missing(McpDescriptionScanControl())
+     _register_if_missing(McpResultScanControl())
++    register_cyberaware_controls(_register_if_missing)
+ 
+ 
+ ensure_registered()

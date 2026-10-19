@@ -1,0 +1,134 @@
+diff --git a/app/api/challenge_chat.py b/app/api/challenge_chat.py
+index 6fafe49..ab90d18 100644
+--- a/app/api/challenge_chat.py
++++ b/app/api/challenge_chat.py
+@@ -33,6 +33,10 @@ from app.models import (
+     Product,
+     User,
+ )
++from app.defense.chain import run_chain
++from app.defense.control import DefenseDecision, DefenseStage, get_control
++from app.defense.pipeline import defense_pipeline
++from app.defense.profiles import resolve_profile
+ from app.rag.service import get_rag_service
+ from app.services.ollama_client import get_ollama_client
+ 
+@@ -88,6 +92,36 @@ def _build_product_context(products: list) -> str:
+     return "\n".join(lines) if lines else ""
+ 
+ 
++async def _defend_retrieval(
++    results: list[dict], query: str, level: int, user_id: int | None
++) -> list[dict]:
++    """Run the rag.kb retrieval controls for ``level`` over raw KB hits.
++
++    Returns only the hits the controls left in context, so the prompt and the
++    evaluator's ``kb_entries_used`` both reflect what the model actually saw.
++    """
++    profile = resolve_profile("rag.kb", level)
++    control_ids = tuple(
++        cid for cid in profile.controls
++        if DefenseStage.RETRIEVAL in get_control(cid).applies_to
++    )
++    candidates = [dict(r, included_in_context=True) for r in results]
++    decision = DefenseDecision(
++        surface="rag.kb",
++        stage=DefenseStage.RETRIEVAL,
++        payload=query,
++        level=level,
++        user_id=user_id,
++        context={"candidates": candidates, "query": query},
++    )
++    await run_chain(control_ids, decision)
++    kept = decision.context.get("candidates") or candidates
++    return [
++        c for c in kept
++        if c.get("included_in_context") and not c.get("excluded_by_control")
++    ]
++
++
+ @router.post("/{challenge_id}/chat", response_model=ChallengeChatResponse)
+ async def challenge_chat(
+     challenge_id: int,
+@@ -130,6 +164,20 @@ async def challenge_chat(
+                 detail="Challenge prompt file not found",
+             )
+ 
++    # CyberAware P1: honour the user's defense level here as the main chat and
++    # the RAG workbench do. Level 0 keeps the stock, undefended path.
++    level = int(getattr(user, "defense_level", 0) or 0)
++    message = body.message
++    blocked_reply: str | None = None
++    if level >= 1:
++        guard = await defense_pipeline.process_input(
++            body.message, level, user_id=user.id, surface="chat.cracky"
++        )
++        if guard.allowed:
++            message = guard.message
++        else:
++            blocked_reply = guard.message
++
+     products_result = await db.execute(select(Product))
+     products = list(products_result.scalars().all())
+     product_context = _build_product_context(products)
+@@ -150,10 +198,12 @@ async def challenge_chat(
+     kb_context = ""
+     kb_entries_structured: list[KBEntry] = []
+     kb_used = False
+-    if body.use_kb and challenge_id in CHALLENGE_NEEDS_KB:
++    if body.use_kb and challenge_id in CHALLENGE_NEEDS_KB and blocked_reply is None:
+         try:
+             rag = get_rag_service()
+-            results = await rag._retrieval.query_async(body.message, top_k=rag._top_k)
++            results = await rag._retrieval.query_async(message, top_k=rag._top_k)
++            if results and level >= 1:
++                results = await _defend_retrieval(results, message, level, user.id)
+             if results:
+                 chunks = [r.get("content", "") for r in results if r.get("content")]
+                 chunks = truncate_chunks_to_budget(chunks, settings.rag.max_context_tokens)
+@@ -188,19 +238,26 @@ async def challenge_chat(
+     full_prompt = (
+         f"{system_prompt}\n\n"
+         f"{context_block}\n\n"
+-        f"User: {body.message}\n"
++        f"User: {message}\n"
+         f"Cracky:"
+     )
+ 
+-    client = get_ollama_client()
+-    options = {
+-        "temperature": settings.chat.temperature,
+-        "top_p": settings.chat.top_p,
+-        "top_k": settings.chat.top_k,
+-        "num_predict": settings.chat.max_tokens,
+-    }
+-    reply = await client.generate(prompt=full_prompt, system="", options=options)
+-    reply = reply or "I'm sorry, I couldn't process that request."
++    if blocked_reply is not None:
++        reply = blocked_reply
++    else:
++        client = get_ollama_client()
++        options = {
++            "temperature": settings.chat.temperature,
++            "top_p": settings.chat.top_p,
++            "top_k": settings.chat.top_k,
++            "num_predict": settings.chat.max_tokens,
++        }
++        reply = await client.generate(prompt=full_prompt, system="", options=options)
++        reply = reply or "I'm sorry, I couldn't process that request."
++        if level >= 1:
++            reply = await defense_pipeline.moderate_output(
++                reply, level, surface="chat.cracky"
++            )
+ 
+     db.add(ChatMessage(
+         user_id=user.id, challenge_id=challenge_id,
+@@ -235,7 +292,7 @@ async def challenge_chat(
+                 model_output=reply,
+                 chat_history=chat_history,
+                 kb_entries_used=kb_entries_structured,
+-                defense_level=0,
++                defense_level=level,
+             )
+             if evaluator.check_exploit(ctx):
+                 attempt.exploit_triggered = True
