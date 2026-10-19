@@ -1,92 +1,97 @@
 # AIGoat on Azure: Team Setup Runbook
 
-Oct 18, 2026 · @Basile Mb.
-
 ## Overview
 
-Run AIGoat on one Azure VM that only your team can reach, through Tailscale, with a nightly auto-shutdown. Your subscription has no GPU quota, so this runbook uses a CPU-only VM: chat replies take roughly 10-30 seconds and teammates' requests queue behind each other, but every lab and challenge still works. A GPU can be added later (see the section after Step 1).
+This runbook deploys AIGoat on a single Azure VM that is reachable only by your team over Tailscale, with no inbound ports exposed to the internet and a nightly auto-shutdown to control cost. It targets a CPU-only VM, which works on subscriptions without GPU quota: chat replies take roughly 10-30 seconds and concurrent requests queue, but every lab and challenge works. GPU options are covered after Step 1.
 
 | Item | Choice |
 | --- | --- |
-| Region | Canada Central (fall back to another region if the VM size is unavailable) |
-| VM size | Standard\_D8as\_v5: 8 vCPU (AMD), 32 GB RAM, no GPU. Use Standard\_D4as\_v5 (4 vCPU, 16 GB) if your quota is limited to 4 vCPUs |
+| Region | Any region where the VM size is available to your subscription |
+| VM size | Standard\_D8as\_v5: 8 vCPU (AMD), 32 GB RAM, no GPU. Use Standard\_D4as\_v5 (4 vCPU, 16 GB) if quota is limited to 4 vCPUs |
 | OS and disk | Ubuntu Server 24.04 LTS, 64 GB StandardSSD |
-| Access | Tailscale only; no inbound rules left open on the Azure firewall |
-| Cost guard | Auto-shutdown, budget alert, delete the resource group when finished |
-| App | AIGoat via `./scripts/start.sh` (Ollama + Mistral running on CPU) |
+| Access | Tailscale only; no inbound rules left open on the Azure NSG |
+| Cost guard | Auto-shutdown, budget alert, resource group deletion at teardown |
+| App | AIGoat via `./scripts/start.sh` (Ollama + Mistral on CPU) |
 
-Before you start, have these ready:
+Prerequisites:
 
 - An Azure subscription with credits and Contributor (or Owner) rights
-- Azure CLI installed on your laptop or WSL (Step 0 shows how) (`az --version`), signed in with `az login`
-- A Tailscale account; teammates will each need one too (check the current free-plan user limit)
+- Azure CLI on your workstation or WSL (Step 0), signed in with `az login`
+- A Tailscale account for each team member (check the current free-plan user limit)
 - About one hour, plus any wait for quota approval
 
-Scope rule: attack only the AIGoat app running on your own VM. Do not point scanners or fuzzers at anything else from this VM, and no denial-of-service testing. This follows Microsoft's penetration testing rules of engagement; read them once before you begin.
+Scope rule: attack only the AIGoat instance running on your own VM. Do not point scanners or fuzzers at any other target from this VM, and do not perform denial-of-service testing. This follows Microsoft's penetration testing rules of engagement; review them before starting.
 
-## Step 0: Install the Azure CLI (Ubuntu or WSL)
+### Conventions
 
-Every `az` command in this runbook needs the Azure CLI. On Ubuntu, including WSL 2, Microsoft's install script sets it up in one command:
-
-```bash
-curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash   # Microsoft's official installer for Debian and Ubuntu
-az --version                                             # confirm it installed
-az login                                                 # opens a browser to sign in
-```
-
-The installer runs as administrator. If you would rather read it first, download it with `curl -sL https://aka.ms/InstallAzureCLIDeb -o install.sh`, open it with `less install.sh`, then run `sudo bash install.sh`. On WSL, if `az login` does not open a browser, use `az login --use-device-code` and enter the code at the page it prints.
-
-## Step 1: Check credits, CPU size and quota
-
-A CPU-only VM needs much less quota than a GPU, so this check is quick. You need 8 free vCPUs in one region (4 if you use the smaller size). Free-trial subscriptions are often capped at 4 vCPUs per region, so check this first.
-
-1. In the portal, open Subscriptions, pick yours, and note the offer type. Under Cost Management + Billing, check the credit balance and expiry date.
-2. Select the subscription and confirm the VM size exists in your region:
-
-```bash
-az login
-az account set --subscription "<name or id>"
-az vm list-skus --location canadacentral --size Standard_D8as_v5 --output table
-```
-
-If the output shows a restriction such as `NotAvailableForSubscription`, try another region (for example East US) and use it for every command below.
-
-**Check your quota** for the AMD Dasv5 family and the regional total:
-
-```bash
-az vm list-usage --location canadacentral --output table | grep -i -E "DASv5|Total Regional"
-```
-
-Free vCPUs are the limit minus the current usage. You need 8 free on `Standard DASv5 Family vCPUs` and on `Total Regional vCPUs`, or 4 for the smaller `Standard_D4as_v5`.
-
-**If the limit is too low, request an increase:** portal, Subscriptions, Usage + quotas, filter on "DASv5", then request a new limit of 8. CPU quota requests are often approved within minutes. If your subscription is a free trial capped at 4 vCPUs, either use `Standard_D4as_v5` or upgrade to pay-as-you-go (remaining credits normally carry over).
-
-**You do not need a GPU for this runbook.** If D-series sizes are restricted in Canada Central, use `Standard_D8s_v5` (Intel) instead and change the size in Step 3. If you want faster replies later, see the next section.
-
-### If you want a GPU later
-
-A GPU brings replies down to 1-3 seconds, but nothing in this runbook requires one. Options, best first:
-
-| Option | Reply speed | Cost | Catch |
-| --- | --- | --- | --- |
-| Upgrade to pay-as-you-go, then request A10 quota (`Standard NVADSA10v5 Family`, for example `Standard_NV18ads_A10_v5`, in Central US) | 1-3 s | Credits | Recreate the network in the new region; needs NVIDIA's GRID driver; confirm Ollama uses the GPU slice |
-| Run AIGoat on Google Colab (documented in `colab_notebooks/AIGoat_Colab.md` in the repo) | 1-3 s | Free tier | Sessions time out and reset; each teammate runs their own notebook |
-| Each teammate runs it locally on an Apple Silicon Mac or an NVIDIA laptop | 1-3 s | Free | Needs 16 GB+ RAM; the setup is repeated on each machine |
-| Proxmox VM, CPU only | 10-30 s | Free | Same speed as this Azure VM without using credits; set the CPU type to `host` |
-
-CPU reply speed depends on core count and AVX2 support. A smaller model such as `tinyllama` (set `ollama.model` in `config/config.yml`) is much faster, but exploits that work on Mistral may behave differently on it.
-
-On a free-trial subscription, GPU families are normally blocked until you upgrade to pay-as-you-go. Remaining credits usually carry over.
-
-## Step 2: Create the resource group and a locked-down network
-
-Put everything in one resource group so a single delete removes it all later. Run these from your laptop terminal, not Azure Cloud Shell, because the SSH rule below uses your laptop's public IP.
+The commands below use these shell variables. Set them once per terminal session on your workstation:
 
 ```bash
 RG=rg-aigoat
-LOC=canadacentral
+LOC=<region>        # for example eastus, westeurope, canadacentral
 VM=vm-aigoat
+```
 
+`100.x.y.z` stands for the VM's Tailscale IPv4 address, and `<publicIpAddress>` for its Azure public IP.
+
+## Step 0: Install the Azure CLI (Ubuntu or WSL)
+
+On Ubuntu, including WSL 2, Microsoft's install script sets up the CLI in one command:
+
+```bash
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash   # Microsoft's official installer for Debian and Ubuntu
+az --version                                             # confirm the install
+az login                                                 # opens a browser to sign in
+```
+
+The installer runs as root. To review it first, download it with `curl -sL https://aka.ms/InstallAzureCLIDeb -o install.sh`, inspect it with `less install.sh`, then run `sudo bash install.sh`. On WSL, if `az login` does not open a browser, use `az login --use-device-code`.
+
+## Step 1: Check credits, VM size and quota
+
+You need 8 free vCPUs in one region (4 for the smaller size). Free-trial subscriptions are often capped at 4 vCPUs per region.
+
+1. In the portal, open Subscriptions and note the offer type. Under Cost Management + Billing, check the credit balance and expiry date.
+2. Select the subscription and confirm the VM size is offered in your region:
+
+```bash
+az account set --subscription "<name or id>"
+az vm list-skus --location $LOC --size Standard_D8as_v5 --output table
+```
+
+If the output shows a restriction such as `NotAvailableForSubscription`, choose another region and update `LOC`.
+
+**Check quota** for the AMD Dasv5 family and the regional total:
+
+```bash
+az vm list-usage --location $LOC --output table | grep -i -E "DASv5|Total Regional"
+```
+
+Free vCPUs equal the limit minus current usage. You need 8 free on both `Standard DASv5 Family vCPUs` and `Total Regional vCPUs` (4 for `Standard_D4as_v5`).
+
+**If the limit is too low, request an increase:** portal, Subscriptions, Usage + quotas, filter on "DASv5", and request a new limit of 8. CPU quota requests are usually approved within minutes. On a free trial capped at 4 vCPUs, either use `Standard_D4as_v5` or upgrade to pay-as-you-go (remaining credits normally carry over).
+
+If Dasv5 sizes are restricted in your region, use `Standard_D8s_v5` (Intel) and change the size in Step 3.
+
+### Optional: GPU acceleration
+
+A GPU brings replies down to 1-3 seconds, but nothing in this runbook requires one.
+
+| Option | Reply speed | Cost | Considerations |
+| --- | --- | --- | --- |
+| Pay-as-you-go subscription with A10 quota (`Standard NVADSA10v5 Family`, for example `Standard_NV18ads_A10_v5`) | 1-3 s | Credits | Region availability varies; requires NVIDIA's GRID driver; confirm Ollama uses the GPU slice |
+| Google Colab (see `colab_notebooks/AIGoat_Colab.md` in the repo) | 1-3 s | Free tier | Sessions time out and reset; each user runs their own notebook |
+| Local install on Apple Silicon or an NVIDIA laptop | 1-3 s | Free | Needs 16 GB+ RAM; setup is repeated per machine |
+| On-premises hypervisor VM (for example Proxmox), CPU only | 10-30 s | Free | Same speed as this VM without cloud spend; set the CPU type to `host` |
+
+CPU reply speed depends on core count and AVX2 support. A smaller model such as `tinyllama` (set `ollama.model` in `config/config.yml`) is much faster, but exploits that work on Mistral may behave differently.
+
+GPU families are normally blocked on free-trial subscriptions until you upgrade to pay-as-you-go.
+
+## Step 2: Create the resource group and a locked-down network
+
+Keep every resource in one resource group so a single delete removes everything. Run these from your workstation, not Azure Cloud Shell, because the SSH rule below uses your workstation's public IP.
+
+```bash
 az group create -n $RG -l $LOC
 
 az network vnet create -g $RG -n vnet-aigoat \
@@ -96,7 +101,7 @@ az network vnet create -g $RG -n vnet-aigoat \
 az network nsg create -g $RG -n nsg-aigoat
 ```
 
-**Add one temporary SSH rule**, limited to your own IP. It is used only for first-time setup and is deleted in Step 5:
+**Add one temporary SSH rule**, restricted to your public IP. It is used only for initial setup and removed in Step 5:
 
 ```bash
 MYIP=$(curl -s https://ifconfig.me)
@@ -106,9 +111,9 @@ az network nsg rule create -g $RG --nsg-name nsg-aigoat \
   --destination-port-ranges 22 --source-address-prefixes $MYIP/32
 ```
 
-Azure's default rules already block all other inbound traffic from the internet, and you will not open ports 3000 or 8000 at all.
+Azure's default NSG rules deny all other inbound internet traffic. Ports 3000 and 8000 are never opened.
 
-**Set a budget alert** in the portal: Cost Management, Budgets, Add. Scope it to `rg-aigoat` and add alerts at 50%, 80% and 100%. Budgets track spend, not your credit balance, so also check the credit balance under Cost Management + Billing once a week.
+**Set a budget alert** in the portal: Cost Management, Budgets, Add. Scope it to the resource group and add alerts at 50%, 80% and 100%. Budgets track spend, not credit balance, so also review the credit balance under Cost Management + Billing weekly.
 
 ## Step 3: Create the VM and set auto-shutdown
 
@@ -125,31 +130,31 @@ az vm create -g $RG -n $VM \
 az vm auto-shutdown -g $RG -n $VM --time 0300
 ```
 
-Why these choices:
+Design notes:
 
-- `--security-type Standard` avoids Secure Boot problems if you add a GPU driver later.
-- The VM keeps a public IP only so it can reach the internet for downloads. With the SSH rule removed in Step 5, nothing can connect in from outside.
-- Auto-shutdown time is in UTC: `0300` is 11 pm EDT or 10 pm EST. Shutdown deallocates the VM, which stops compute billing.
-- Your SSH key is saved under `~/.ssh` on the machine where you ran the command. Back it up; losing it means losing admin access.
+- `--security-type Standard` avoids Secure Boot issues if a GPU driver is added later.
+- The public IP is kept only for outbound internet access (package and model downloads). Once the SSH rule is removed in Step 5, no inbound connection is possible from outside.
+- The auto-shutdown time is in UTC; convert it to a time that suits your team's working hours. Auto-shutdown deallocates the VM, which stops compute billing.
+- `--generate-ssh-keys` stores the key pair under `~/.ssh` on the machine that ran the command. Back it up; losing it means losing admin access.
 
-Copy the `publicIpAddress` from the command output, then connect:
+Copy `publicIpAddress` from the output and connect:
 
 ```bash
 ssh azureuser@<publicIpAddress>
 ```
 
-Check the monthly cost estimate for this size in the Azure pricing calculator and compare it to your remaining credits before leaving the VM running for days.
+Check the monthly estimate for the chosen size in the Azure pricing calculator against your remaining credits before leaving the VM running for extended periods.
 
-## Step 4: Update the VM and check its CPU
+## Step 4: Update the VM and verify the CPU
 
-A CPU-only VM needs no GPU driver. Update the system and reboot:
+A CPU-only VM needs no GPU driver. Update and reboot:
 
 ```bash
 sudo apt update && sudo apt -y upgrade
 sudo reboot
 ```
 
-Reconnect after about a minute and confirm the CPU has the fast instruction sets Ollama relies on:
+Reconnect after about a minute and confirm the instruction sets Ollama relies on:
 
 ```bash
 lscpu | grep -o -E 'avx2|avx512f' | sort -u
@@ -157,18 +162,18 @@ nproc
 free -h
 ```
 
-You should see `avx2`, 8 CPUs and about 31 GB of memory (4 CPUs and about 15 GB on the smaller size). If `avx2` is missing, replies will be far slower than expected; pick a different size.
+Expected: `avx2`, 8 CPUs and about 31 GB of memory (4 CPUs and about 15 GB on the smaller size). If `avx2` is missing, inference will be much slower; choose a different size.
 
-- If you get GPU quota later, resize the VM to a GPU size, install the NVIDIA driver (`sudo ubuntu-drivers install` on NC-series; NVIDIA's GRID driver on NV A10 v5 sizes), reboot and run `nvidia-smi`.
-- Then restart Ollama with `sudo systemctl restart ollama`. `ollama ps` should show `GPU` instead of `CPU`.
+- If GPU quota becomes available, resize to a GPU size, install the NVIDIA driver (`sudo ubuntu-drivers install` on NC-series; NVIDIA's GRID driver on NV A10 v5 sizes), reboot and run `nvidia-smi`.
+- Then restart Ollama with `sudo systemctl restart ollama`. `ollama ps` should report `GPU` instead of `CPU`.
 
-Every other step in this runbook is the same for CPU and GPU VMs.
+All remaining steps are identical for CPU and GPU VMs.
 
 ## Step 5: Add Tailscale and close public access
 
-Tailscale gives the VM a private address that only your team's devices can reach, so no inbound port needs to be open on Azure.
+Tailscale gives the VM a private address reachable only from devices on your tailnet, so no inbound port needs to be open on Azure.
 
-**Install and join the VM to your tailnet (run on the VM, after you connect with SSH):**
+**Install Tailscale and join the VM to the tailnet (on the VM):**
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
@@ -176,38 +181,36 @@ sudo tailscale up --hostname=aigoat-azure
 tailscale ip -4
 ```
 
-Open the login URL it prints and approve the device. Note the `100.x.y.z` address from the last command.
+Open the printed login URL and approve the device. Record the `100.x.y.z` address.
 
 **In the Tailscale admin console:**
 
-- Disable key expiry for this machine so it does not drop off the network after a few months.
-- Invite your two teammates to the tailnet, or share the machine with their Tailscale accounts. Each of them installs Tailscale on their laptop and signs in.
+- Disable key expiry for this machine so it does not drop off the tailnet.
+- Invite team members to the tailnet, or share the machine with their Tailscale accounts. Each member installs Tailscale on their workstation and signs in.
 
-**Give teammates SSH access.** Each person prints their public key in their own terminal and sends you the one line it outputs:
-
-```bash
-cat ~/id_ed25519.pub
-```
-
-Copy the whole line, which starts with `ssh-ed25519`. In this setup the key sits in your home folder (`~/id_ed25519.pub`), not inside `~/.ssh`, so the path has no `.ssh` in it. The key is printed to the screen, so copy it from the terminal. Never send the private key (`id_ed25519`, the file without `.pub`). If the file does not exist, run `ssh-keygen -t ed25519`, and use `ls ~/*.pub ~/.ssh/*.pub` to see which keys you have.
-
-SSH only looks in `~/.ssh` by default. If your private key is also in the home folder, either move it with `mv ~/id_ed25519 ~/.ssh/ && chmod 600 ~/.ssh/id_ed25519`, or connect with `ssh -i ~/id_ed25519 azureuser@100.x.y.z`.
-
-Append each teammate's line to `/home/azureuser/.ssh/authorized_keys` with Azure Run Command, run from your laptop. It works even when SSH is not working yet:
+**Grant team members SSH access.** Each member sends their public key, which is a single line beginning with `ssh-ed25519`:
 
 ```bash
-az vm run-command invoke -g rg-aigoat -n vm-aigoat --command-id RunShellScript --scripts "echo 'ssh-ed25519 AAAA...paste-key-here teammate' >> /home/azureuser/.ssh/authorized_keys"
+cat ~/.ssh/id_ed25519.pub
 ```
 
-`>>` appends. A single `>` would overwrite the file and lock you out. This is one shared Linux account, which is fine for a three-person lab.
+Only the `.pub` file is shared; the private key (`id_ed25519`) never leaves its owner's machine. If no key exists, generate one with `ssh-keygen -t ed25519`. `ls ~/.ssh/*.pub` lists existing keys.
 
-**Join your laptop to the tailnet (WSL 2).** Your SSH key and the Azure CLI live in WSL, so WSL needs its own Tailscale connection, even if Tailscale for Windows is also installed. First check that systemd is running:
+Append each key to `/home/azureuser/.ssh/authorized_keys` with Azure Run Command, which works even when SSH does not:
+
+```bash
+az vm run-command invoke -g $RG -n $VM --command-id RunShellScript --scripts "echo 'ssh-ed25519 AAAA...paste-key-here member-name' >> /home/azureuser/.ssh/authorized_keys"
+```
+
+`>>` appends; a single `>` would overwrite the file and lock everyone out. A single shared Linux account is acceptable for a small lab team; for larger teams, create one account per user.
+
+**Join a WSL 2 workstation to the tailnet.** If your SSH key and Azure CLI live in WSL, WSL needs its own Tailscale connection, even when Tailscale for Windows is installed. First confirm systemd is running:
 
 ```bash
 ps -p 1 -o comm=
 ```
 
-If it prints `init` instead of `systemd`, enable it, then run `wsl --shutdown` in PowerShell and reopen WSL:
+If it prints `init` instead of `systemd`, enable it, run `wsl --shutdown` in PowerShell, and reopen WSL:
 
 ```bash
 sudo tee /etc/wsl.conf <<'EOF'
@@ -216,136 +219,119 @@ systemd=true
 EOF
 ```
 
-Install Tailscale and sign in with the same account as the VM:
+Install Tailscale and sign in with the same tailnet as the VM:
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --hostname=laptop-wsl
+sudo tailscale up --hostname=workstation-wsl
 ```
 
-Then check that WSL can see the VM:
+Verify connectivity:
 
 ```bash
 tailscale status
 tailscale ping 100.x.y.z
 ```
 
-Use the VM's `100.x.y.z` address with SSH rather than the `aigoat-azure` name, because WSL often does not resolve Tailscale names.
+Use the `100.x.y.z` address for SSH rather than the MagicDNS name, because WSL often does not resolve Tailscale names.
 
-**Install Tailscale on your main computer (optional).** The port forward through WSL is enough to use AIGoat, so this is only needed if you want Windows apps, or teammates who are not using WSL, to reach the VM directly, for example for SSH or file copies. It does not make browser login work on the `100.x.y.z` address (see Step 7). Sign in with the same Tailscale account as the VM.
+**Install Tailscale on the host OS (optional).** The SSH port forward in Step 7 is sufficient to use AIGoat. A host-level client is only needed for native apps or for members not using WSL. It does not make browser login work on the `100.x.y.z` address (see Step 7).
 
-**Windows.** Run in PowerShell, or download the installer from tailscale.com/download/windows. Then sign in from the Tailscale icon in the system tray:
-
-```powershell
-winget install --id Tailscale.Tailscale
-```
-
-**Mac.** Install Tailscale from the Mac App Store, or download it from tailscale.com/download/mac. Then sign in from the menu bar icon.
-
-**Linux** (not WSL; the same commands as on the VM):
+- **Windows:** `winget install --id Tailscale.Tailscale` in PowerShell, or the installer from tailscale.com/download/windows; sign in from the system tray icon.
+- **macOS:** install from the Mac App Store or tailscale.com/download/mac; sign in from the menu bar icon.
+- **Linux (not WSL):**
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh   # install Tailscale
 sudo tailscale up                                   # prints a login URL; open it and approve
 ```
 
-Check that it works. On Windows, run this in PowerShell; on Mac and Linux, use any terminal:
+Run `tailscale status` to confirm the VM appears. WSL and the Windows host appear as two separate devices, which is expected.
 
-```bash
-tailscale status
-```
-
-The VM should appear in the list. WSL and Windows show up as two separate devices on your tailnet, which is fine; keep both.
-
-**Test from WSL over Tailscale** before removing the public rule:
+**Test SSH over Tailscale** before removing the public rule:
 
 ```bash
 ssh azureuser@100.x.y.z
 ```
 
-**Keep Tailscale SSH off.** This runbook uses regular key-based SSH. If you ran `tailscale set --ssh` earlier, Tailscale answers SSH itself and your keys stop working. Turn it off from your laptop:
+**Keep Tailscale SSH disabled.** This runbook uses standard key-based SSH. If `tailscale set --ssh` was enabled, Tailscale intercepts SSH and key authentication stops working. Disable it:
 
 ```bash
-az vm run-command invoke -g rg-aigoat -n vm-aigoat --command-id RunShellScript --scripts "tailscale set --ssh=false"
+az vm run-command invoke -g $RG -n $VM --command-id RunShellScript --scripts "tailscale set --ssh=false"
 ```
 
-**If you see `Permission denied (publickey)`.** The network path works, but the VM rejected your key. Two common causes: SSH only offers keys from `~/.ssh` (yours may sit in the home folder), and `az vm create --generate-ssh-keys` installs a different key (usually `~/.ssh/id_rsa`) than your ed25519 one.
+**Troubleshooting `Permission denied (publickey)`.** The network path works but the VM rejected the key. Common causes: the client is offering a different key than the one installed (`az vm create --generate-ssh-keys` installs `~/.ssh/id_rsa` by default, not an ed25519 key), or the key is stored outside `~/.ssh`, where SSH does not look by default.
 
-First, try the key Azure generated:
+Try the key Azure generated:
 
 ```bash
 ls ~/.ssh
 ssh -i ~/.ssh/id_rsa azureuser@100.x.y.z
 ```
 
-If that fails, add your ed25519 public key to the VM. This works without SSH:
+Otherwise, install your ed25519 public key via Run Command:
 
 ```bash
-PUB=$(cat ~/id_ed25519.pub)
-az vm run-command invoke -g rg-aigoat -n vm-aigoat --command-id RunShellScript --scripts "echo '$PUB' >> /home/azureuser/.ssh/authorized_keys"
+PUB=$(cat ~/.ssh/id_ed25519.pub)
+az vm run-command invoke -g $RG -n $VM --command-id RunShellScript --scripts "echo '$PUB' >> /home/azureuser/.ssh/authorized_keys"
 ```
 
-Then connect and name the key explicitly:
+If the key lives outside `~/.ssh`, pass it explicitly with `-i <path-to-private-key>` or move it into `~/.ssh` with mode `600`.
+
+If SSH reports that key permissions are too open, the file is probably on a Windows-mounted drive (under `/mnt/c`). Copy it into the WSL filesystem:
 
 ```bash
-chmod 600 ~/id_ed25519
-ssh -i ~/id_ed25519 azureuser@100.x.y.z
+mkdir -p ~/.ssh && cp <path>/id_ed25519 <path>/id_ed25519.pub ~/.ssh/ && chmod 600 ~/.ssh/id_ed25519
 ```
 
-If SSH says the key permissions are too open, the file is probably on a Windows drive (a path under `/mnt/c`). Copy it into WSL's own filesystem. After that, plain `ssh azureuser@100.x.y.z` works without `-i`:
+To see which keys SSH offers and what the server accepts:
 
 ```bash
-mkdir -p ~/.ssh && cp ~/id_ed25519 ~/id_ed25519.pub ~/.ssh/ && chmod 600 ~/.ssh/id_ed25519
+ssh -v azureuser@100.x.y.z 2>&1 | grep -E "Offering|Authentications|identity file"
 ```
 
-To see which key SSH offers and what the server accepts:
-
-```bash
-ssh -v -i ~/id_ed25519 azureuser@100.x.y.z 2>&1 | grep -E "Offering|Authentications|identity file"
-```
-
-**Remove the temporary public SSH rule** (run on your laptop):
+**Remove the temporary public SSH rule** (from your workstation):
 
 ```bash
 az network nsg rule delete -g $RG --nsg-name nsg-aigoat -n AllowInboundSSH
 ```
 
-Verify: `ssh azureuser@<publicIpAddress>` should now time out, while the Tailscale address still works.
+Verify: `ssh azureuser@<publicIpAddress>` should now time out, while the Tailscale address still connects.
 
-**Optional host firewall (UFW).** Run this on the VM, only after the Tailscale SSH test passes. It is a second layer behind the Azure firewall: it drops any incoming traffic that does not arrive through Tailscale. Keep the order, so you do not lock yourself out:
+**Optional host firewall (UFW).** Run on the VM only after the Tailscale SSH test passes. It adds a second layer behind the NSG, dropping any inbound traffic that does not arrive over Tailscale. Keep this order to avoid locking yourself out:
 
 ```bash
-sudo ufw default deny incoming    # block all incoming traffic by default
-sudo ufw default allow outgoing   # let the VM reach the internet (apt, git, Ollama downloads)
-sudo ufw allow in on tailscale0   # exception: allow anything arriving over the Tailscale interface
-sudo ufw enable                   # turn the firewall on (answer y if it warns about SSH)
+sudo ufw default deny incoming    # block all inbound traffic by default
+sudo ufw default allow outgoing   # allow outbound (apt, git, model downloads)
+sudo ufw allow in on tailscale0   # allow traffic arriving over the Tailscale interface
+sudo ufw enable                   # enable the firewall (answer y to the SSH warning)
 ```
 
-`allow in on tailscale0` permits incoming connections only on the `tailscale0` interface, which Tailscale creates for traffic from your tailnet. SSH (port 22), the app (3000) and the API (8000) are then reachable only from devices on your tailnet. Running `sudo ufw enable` before that rule would cut off your own SSH session, which is why the order matters. UFW warns that enabling may disrupt SSH; answering `y` is safe once the Tailscale rule is in place.
+`allow in on tailscale0` permits inbound connections only on the Tailscale interface, so SSH (22), the frontend (3000) and the API (8000) are reachable only from the tailnet. Enabling UFW before adding that rule would drop the current SSH session.
 
-Check the result:
+Verify:
 
 ```bash
-sudo ufw status verbose           # expect: Default: deny (incoming), allow (outgoing), and a rule for tailscale0
+sudo ufw status verbose           # expect: deny (incoming), allow (outgoing), and a rule for tailscale0
 ```
 
-If you lock yourself out, turn the firewall off without SSH from your laptop:
+Recovery if locked out:
 
 ```bash
-az vm run-command invoke -g rg-aigoat -n vm-aigoat --command-id RunShellScript --scripts "ufw disable"
+az vm run-command invoke -g $RG -n $VM --command-id RunShellScript --scripts "ufw disable"
 ```
 
 ## Step 6: Install Ollama and deploy AIGoat
 
-AIGoat's start script requires **Python 3.11** and stops with `[FAIL] Python 3.11 is required (CI pin / pyproject target-version)` if it finds anything else. Ubuntu 24.04 ships Python 3.12, so install 3.11 alongside it and leave the project's `target-version` alone. The stock Node 18 package is enough. Run on the VM, over Tailscale:
+AIGoat's start script requires **Python 3.11** and exits with `[FAIL] Python 3.11 is required (CI pin / pyproject target-version)` otherwise. Ubuntu 24.04 ships Python 3.12, so install 3.11 alongside it and leave the project's `target-version` unchanged. The distribution's Node 18 package is sufficient. On the VM:
 
 ```bash
 sudo apt -y install git tmux curl software-properties-common nodejs npm
-sudo add-apt-repository -y ppa:deadsnakes/ppa   # source for extra Python versions on Ubuntu
+sudo add-apt-repository -y ppa:deadsnakes/ppa   # additional Python versions for Ubuntu
 sudo apt update
 sudo apt -y install python3.11 python3.11-venv python3.11-dev
-python3.11 --version                            # should print 3.11.x
-node -v                                         # needs 18 or newer
+python3.11 --version                            # expect 3.11.x
+node -v                                         # expect 18 or newer
 ```
 
 **Install Ollama and pull the model:**
@@ -357,69 +343,71 @@ ollama run mistral "Say hello in five words"
 ollama ps
 ```
 
-`ollama ps` will show `100% CPU` on this VM, which is expected. The first reply after a long idle period is the slowest because the model has to load. Replies stay in the 10-30 second range, and requests from teammates queue behind each other.
+`ollama ps` reports `100% CPU` on this VM, as expected. The first reply after an idle period is slowest because the model must load. Replies typically take 10-30 seconds, and concurrent requests queue.
 
-**Clone and start AIGoat inside tmux**, so it keeps running when your SSH session closes:
+**Clone and start AIGoat inside tmux** so it survives SSH disconnects:
 
 ```bash
 git clone https://github.com/AISecurityConsortium/AIGoat.git
 cd AIGoat
 chmod +x scripts/*.sh
 tmux new -s aigoat
-python3.11 -m venv ~/aigoat-venv     # a Python 3.11 environment
-source ~/aigoat-venv/bin/activate    # makes python and python3 mean 3.11 in this shell
-python --version                     # confirm it prints 3.11.x
+python3.11 -m venv ~/aigoat-venv     # Python 3.11 environment
+source ~/aigoat-venv/bin/activate    # makes python/python3 resolve to 3.11 in this shell
+python --version                     # expect 3.11.x
 ./scripts/start.sh
 ```
 
-Activate the environment inside tmux, and again in any new tmux window or after reattaching to a new shell. If the script still reports the wrong version, see how it picks Python with `grep -n -i python scripts/start.sh`.
+Activate the environment inside tmux, and again in any new tmux window. If the script still reports the wrong version, inspect how it selects Python with `grep -n -i python scripts/start.sh`.
 
-The first run installs Python and npm dependencies, so allow several minutes. Wait for "AI Goat is running!". Detach with Ctrl+b then d, and reattach later with `tmux attach -t aigoat`.
+The first run installs Python and npm dependencies and can take several minutes. Wait for "AI Goat is running!". Detach with Ctrl+b then d; reattach with `tmux attach -t aigoat`.
 
-The start script is documented to check Ollama, pull Mistral if missing, initialize the database and start both servers. I have not run it on this exact VM image, so if it fails, check the log output and the project's troubleshooting notes.
+The start script checks Ollama, pulls Mistral if missing, initializes the database and starts both servers. Behavior may differ between releases; if it fails, review the log output and the project's troubleshooting documentation.
 
-**Optional agent model.** On startup the script may warn that the tool-calling model `qwen3.5:9b` is not installed. The agent, MCP host and kill chain labs make no tool calls without it, but the other labs run on Mistral. To install it, run `ollama pull qwen3.5:9b` (a multi-gigabyte download that needs more RAM and will be slow on a CPU-only VM), or start with `AIGOAT_PULL_AGENT_MODEL=1 ./scripts/start.sh`. Skip it until you need those labs.
+**Optional agent model.** The script may warn that the tool-calling model `qwen3.5:9b` is not installed. The agent, MCP host and kill-chain labs need it for tool calls; all other labs run on Mistral. Install it with `ollama pull qwen3.5:9b` (a multi-gigabyte download that needs more RAM and is slow on CPU), or start with `AIGOAT_PULL_AGENT_MODEL=1 ./scripts/start.sh`. Defer it until those labs are needed.
 
-## Step 7: Reach the app from team laptops and smoke-test
+## Step 7: Access the app from team workstations and smoke-test
 
-Each teammate connects to Tailscale, forwards both app ports over SSH, and opens the app at `http://localhost:3000`. This is the supported way in: the frontend (port 3000) calls the backend (port 8000) from the browser, and the backend only accepts those browser requests from the `localhost` origin. Opening the app by its `100.x.y.z` address loads the pages, but login fails (see below).
+Each member connects to Tailscale, forwards both app ports over SSH, and opens the app at `http://localhost:3000`. This is the supported access path: the frontend (3000) calls the backend (8000) from the browser, and the backend's CORS policy accepts only the `localhost` origin.
 
 ```bash
 ssh -L 3000:localhost:3000 -L 8000:localhost:8000 azureuser@100.x.y.z
 ```
 
-If your key is not in `~/.ssh`, add `-i ~/id_ed25519` to this command.
+Add `-i <path-to-private-key>` if the key is not in `~/.ssh`. Keep the session open and browse to http://localhost:3000 (API docs at http://localhost:8000/docs).
 
-Keep that session open and browse to http://localhost:3000 (API docs at http://localhost:8000/docs).
+**Do not browse to the Tailscale address.** `http://100.x.y.z:3000` loads the pages, but login fails: the browser's CORS preflight (`OPTIONS /api/auth/login/`) originates from that address and the backend returns `400 Bad Request`, visible in `logs/backend.log`. For direct access, add that origin to the backend's CORS settings; locate them with `grep -rn -i -E "cors|allow_origins" ~/AIGoat/app ~/AIGoat/config`.
 
-**Do not use the Tailscale address in the browser.** Opening `http://100.x.y.z:3000` loads the pages, but login fails: the browser's preflight request (`OPTIONS /api/auth/login/`) comes from that origin and the backend answers `400 Bad Request`, which shows up in `logs/backend.log`. The `localhost:3000` tunnel works because requests then come from the `localhost` origin. If you need direct access later, allow that origin in the backend's CORS settings; find them with `grep -rn -i -E "cors|allow_origins" ~/AIGoat/app ~/AIGoat/config`.
+**WSL users:** the Windows browser cannot use WSL's Tailscale connection. Use the port forward above and browse to `http://localhost:3000`.
 
-**WSL users:** your Windows browser cannot use the Tailscale connection inside WSL, and the direct `100.x.y.z` address does not work for login anyway. Use the port forward above and browse `http://localhost:3000`.
+**Smoke test** (run once with the whole team):
 
-**Smoke test**, to run once with the whole team:
-
-- Log in as one of the preset users (no sign-up needed; alice, bob, charlie and frank all use password123). Give each teammate their own user so chats and CTF progress stay separate, for example `alice` / `password123` (admin is `admin` / `admin123`).
-- Send a chat message and time the reply. Expect 10-30 seconds on CPU. If it takes over a minute, check `htop` and `free -h` on the VM.
+- Log in with one of AIGoat's default seeded accounts (`alice`, `bob`, `charlie`, `frank` with `password123`; `admin` with `admin123`). Assign one account per member so chats and CTF progress stay separate. These are public lab defaults; never reuse them elsewhere.
+- Send a chat message and time the reply. Expect 10-30 seconds on CPU. Over a minute indicates resource pressure; check `htop` and `free -h`.
 - Open an Attack Lab and a CTF challenge, and confirm the defense-level toggle in the navigation bar works.
-- **Test for shared state.** Have two people log in at once. One adds a Knowledge Base entry and syncs it to the vector database; check whether the other person's chatbot is affected, and whether switching defense level changes it for both. Also have two people send a message at the same moment to see how long the second one waits. If it interferes, agree on who works on which lab at a time.
+- **Test for shared state.** With two members logged in, have one add a Knowledge Base entry and sync it to the vector database; check whether the other member's chatbot is affected, and whether the defense level is global. Have two members send a message simultaneously to measure queuing. If state is shared, coordinate which lab each member works on.
 
-**If login fails ("Invalid credentials" for every user).** First check how you opened the app. Open it at `http://localhost:3000` through the port forward, not the `100.x.y.z` address. Through the Tailscale address the pages load, but the backend answers the browser's preflight check (`OPTIONS /api/auth/login/`) with `400 Bad Request`, so the login never goes through and the page shows a generic failure. You can see those lines with `tail -n 30 ~/AIGoat/logs/backend.log`. After switching to the localhost address, use a private window or a hard refresh (Ctrl+Shift+R). Only if the backend log shows the login `POST` itself failing (for example a 401) is the database the problem. In that case, reseed using the backend's own Python environment, because the seed script needs the same libraries as the app. Find the interpreter the running backend uses:
+**If login fails with "Invalid credentials" for every user:** first confirm the app was opened at `http://localhost:3000` through the port forward. Via the Tailscale address, the preflight fails with `400` and the UI shows a generic error (`tail -n 30 ~/AIGoat/logs/backend.log`). After switching, use a private window or hard refresh (Ctrl+Shift+R). Only if the backend log shows the login `POST` itself failing (for example `401`) is the database at fault.
 
-```bash
-PID=$(ss -tlnp | grep ':8000' | grep -o 'pid=[0-9]*' | cut -d= -f2)
-tr '\0' ' ' < /proc/$PID/cmdline; echo    # prints something like /home/azureuser/AIGoat/venv/bin/python3 ...
-```
-
-Then stop the app, seed with that interpreter (replace `<PYTHON>` with the path printed above), and start it again:
+By default the start script builds and runs the backend from `~/AIGoat/venv`. To reseed with that environment:
 
 ```bash
 cd ~/AIGoat
 ./scripts/stop.sh
-<PYTHON> -m scripts.seed     # should end with: Seed completed successfully.
+source ~/AIGoat/venv/bin/activate
+python -c "import sqlalchemy; print(sqlalchemy.__version__)"   # must print a version, not an error
+python -m scripts.seed                                          # expect: Seed completed successfully.
 ./scripts/start.sh
 ```
 
-If nothing is listening on port 8000, install the dependencies into your venv and seed with it:
+If the backend uses a different interpreter, identify it from the running process:
+
+```bash
+PID=$(ss -tlnp | grep ':8000' | grep -o 'pid=[0-9]*' | cut -d= -f2)
+tr '\0' ' ' < /proc/$PID/cmdline; echo    # for example /home/azureuser/AIGoat/venv/bin/python3 ...
+```
+
+Then run `<PYTHON> -m scripts.seed` from `~/AIGoat` with that path. If nothing is listening on 8000, install dependencies into your own venv and seed with it:
 
 ```bash
 cd ~/AIGoat
@@ -430,106 +418,95 @@ python -m scripts.seed
 
 **Seed script cautions**
 
-- A full run resets the passwords of the five preset users (`alice`, `bob`, `charlie`, `frank`, `admin`) and recreates the shop data.
-- A full run also deletes every CTF challenge attempt. Once teammates have solved challenges, use `python -m scripts.seed --sync-challenges` instead, which updates the challenge text and keeps the attempts.
-- Each full run adds another 6-8 random orders per demo user. To refresh only the support tickets, use `python -m scripts.seed --sync-support`.
-- Run it from `~/AIGoat`, so it writes to the same database the backend reads.
+- A full run resets the passwords of the five default accounts and recreates the shop data.
+- A full run deletes all CTF challenge attempts. Once members have progress, use `python -m scripts.seed --sync-challenges`, which updates challenge text and keeps attempts.
+- Each full run adds 6-8 random orders per demo user. To refresh only support tickets, use `python -m scripts.seed --sync-support`.
+- Run it from `~/AIGoat` so it writes to the database the backend reads.
 
-**Confirmed on this setup:** the backend runs from the environment the start script builds at `~/AIGoat/venv`. The simplest reseed is therefore:
+If the start script reports `Database already has required data` after a reseed and login still fails, the cause is the browser origin, not the database. Check the request URL in DevTools.
+
+## Step 8: Operations, cost control and teardown
+
+The VM bills for compute, disk and public IP while allocated. Always deallocate; an OS-level shutdown leaves the VM in a "stopped" state that still incurs compute charges.
+
+**Start and stop** (from any workstation with the Azure CLI):
 
 ```bash
-cd ~/AIGoat
-./scripts/stop.sh
-source ~/AIGoat/venv/bin/activate
-python -c "import sqlalchemy; print(sqlalchemy.__version__)"   # must print a version, not an error
-python -m scripts.seed                                          # should end with: Seed completed successfully.
-./scripts/start.sh
+az vm start -g $RG -n $VM
+az vm deallocate -g $RG -n $VM
+az vm list -g $RG -d -o table
 ```
 
-The start script reported `Database already has required data` after the reseed, so if login still fails at this point, the cause is the browser calling the wrong address, not the database. Check the request URL in DevTools as described above.
+The power state should read `VM deallocated` when finished. The Tailscale address persists across restarts.
 
-## Step 8: Day-to-day operation, cost control and teardown
+**After each start**, SSH in, run `tmux new -s aigoat`, then `cd ~/AIGoat && ./scripts/start.sh`. Ollama starts automatically as a service, and models persist on disk.
 
-The VM bills for compute, disk and the public IP while allocated. Use deallocate, not just an operating-system shutdown, because a merely stopped VM still bills for compute.
-
-**Start and stop** (from any laptop with Azure CLI):
+**Take a baseline snapshot** after the smoke test passes, so you can roll back after destructive experiments:
 
 ```bash
-az vm start -g rg-aigoat -n vm-aigoat
-az vm deallocate -g rg-aigoat -n vm-aigoat
-az vm list -g rg-aigoat -d -o table
-```
-
-The last command should show the power state `VM deallocated` when you are done. The Tailscale address stays the same across restarts.
-
-**After every start**, SSH in, run `tmux new -s aigoat`, then `cd AIGoat && ./scripts/start.sh`. Ollama starts on its own as a service, and the model stays on disk.
-
-**Take a baseline snapshot** once the smoke test passes, so you can roll back after heavy experiments. Snapshots are cheap but not free:
-
-```bash
-OSDISK=$(az vm show -g rg-aigoat -n vm-aigoat --query storageProfile.osDisk.managedDisk.id -o tsv)
-az snapshot create -g rg-aigoat -n snap-aigoat-baseline --source $OSDISK
+OSDISK=$(az vm show -g $RG -n $VM --query storageProfile.osDisk.managedDisk.id -o tsv)
+az snapshot create -g $RG -n snap-aigoat-baseline --source $OSDISK
 ```
 
 **Team rules**
 
-- Tell the others before running `./scripts/stop.sh --clean && ./scripts/start.sh`; it resets the database for everyone.
-- Attack only the AIGoat app on this VM. No scanning or fuzzing of other targets, and no network flooding. The Unbounded Consumption lab (token flooding the model) is fine, since it stays on your own VM.
-- Never open ports 3000 or 8000 to the internet, and never add a public inbound rule.
-- Whoever finishes last confirms the VM is deallocated.
+- Announce before running `./scripts/stop.sh --clean && ./scripts/start.sh`; it resets the database for everyone.
+- Attack only the AIGoat app on this VM. No scanning or fuzzing of other targets and no network flooding. The Unbounded Consumption lab (token flooding the model) is in scope because it stays on the VM.
+- Never expose ports 3000 or 8000 to the internet, and never add a public inbound rule.
+- The last member to finish confirms the VM is deallocated.
 
-**Teardown** when the project is over. This deletes the VM, disk, snapshot, network and IP together:
+**Teardown** at the end of the engagement deletes the VM, disk, snapshot, network and IP together:
 
 ```bash
-az group delete -n rg-aigoat --yes --no-wait
+az group delete -n $RG --yes --no-wait
 ```
 
 Then remove the `aigoat-azure` machine from the Tailscale admin console.
 
-## Step 9: Stop, start and come back to the app
+## Step 9: Stopping, starting and resuming the app
 
-There are two layers: the app (processes running on the VM) and the VM itself (what Azure bills for). Stopping the app does not stop the billing; deallocating the VM does.
+There are two layers: the application processes on the VM, and the VM itself (which Azure bills for). Stopping the app does not stop billing; deallocating the VM does.
 
-**Stop the app** (the VM stays on):
+**Stop the app** (VM stays running):
 
 ```bash
 cd ~/AIGoat
-./scripts/stop.sh        # stops the frontend and backend; Ollama keeps running as a system service
+./scripts/stop.sh        # stops frontend and backend; Ollama keeps running as a system service
 ```
 
-**Start the app inside tmux**, so it keeps running when your SSH session closes:
+**Start the app inside tmux:**
 
 ```bash
-tmux new -s aigoat       # use `tmux attach -t aigoat` instead if the session already exists
+tmux new -s aigoat       # or `tmux attach -t aigoat` if the session exists
 cd ~/AIGoat
 ./scripts/start.sh       # wait for "AI Goat is running!"
 ```
 
-The start script builds and uses its own environment at `~/AIGoat/venv`, so you do not need to activate anything first. If it reports the wrong Python version, install Python 3.11 as in Step 6. To leave the app running and get your terminal back, press Ctrl+b, then d.
+The start script uses its own environment at `~/AIGoat/venv`, so no manual activation is needed. If it reports the wrong Python version, install Python 3.11 as in Step 6. Detach with Ctrl+b, then d.
 
-**Check that it is running:**
+**Verify it is running:**
 
 ```bash
 ss -tlnp | grep -E '3000|8000'     # both ports should be listening
 tail -n 20 ~/AIGoat/logs/backend.log
 ```
 
-**Come back later.** Pick the row that matches what happened:
+**Resuming:**
 
-| Situation | What to do |
+| Situation | Action |
 | --- | --- |
-| Your SSH session dropped but the VM is still on | SSH back in and run `tmux attach -t aigoat`; the app kept running |
-| The VM was deallocated (auto-shutdown at 0300 UTC, or you stopped it) | Run `az vm start -g rg-aigoat -n vm-aigoat` from your laptop and wait a minute. Tailscale reconnects by itself. SSH in, then start the app again with the tmux commands above, because tmux sessions and the running app do not survive a shutdown |
-| The browser says it cannot connect | The SSH tunnel on your laptop is closed. Run the `ssh -L` command from Step 7 again and keep that terminal open |
-| You want a clean database | Tell the team first, then run `./scripts/stop.sh --clean && ./scripts/start.sh`. This resets everyone |
+| SSH session dropped, VM still running | SSH back in and run `tmux attach -t aigoat`; the app kept running |
+| VM was deallocated (auto-shutdown or manual) | Run `az vm start -g $RG -n $VM` and wait about a minute. Tailscale reconnects automatically. SSH in and start the app again with the tmux commands above; tmux sessions do not survive a shutdown |
+| Browser cannot connect | The local SSH tunnel is closed. Re-run the `ssh -L` command from Step 7 and keep that terminal open |
+| A clean database is needed | Notify the team, then run `./scripts/stop.sh --clean && ./scripts/start.sh`. This resets everyone's data |
 
-**Useful tmux commands:** `tmux ls` lists sessions, `tmux attach -t aigoat` rejoins one, and `tmux kill-session -t aigoat` removes it. Detach without stopping the app with Ctrl+b, then d.
+**tmux reference:** `tmux ls` lists sessions, `tmux attach -t aigoat` reattaches, `tmux kill-session -t aigoat` removes a session. Detach without stopping the app with Ctrl+b, then d.
 
-**When you are done for the day,** stop the app if you like, then deallocate the VM from your laptop so billing stops:
+**End of day:** optionally stop the app, then deallocate the VM:
 
 ```bash
-az vm deallocate -g rg-aigoat -n vm-aigoat
-az vm list -g rg-aigoat -d -o table    # PowerState should read: VM deallocated
+az vm deallocate -g $RG -n $VM
+az vm list -g $RG -d -o table    # PowerState should read: VM deallocated
 ```
 
 ## Troubleshooting
@@ -537,14 +514,14 @@ az vm list -g rg-aigoat -d -o table    # PowerState should read: VM deallocated
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `QuotaExceeded` or `OperationNotAllowed` creating the VM | Not enough free vCPUs in the region | Request more DASv5 and regional vCPUs, or use `Standard_D4as_v5` (Step 1) |
-| `SkuNotAvailable` | Size restricted or out of capacity in that region | Try `Standard_D8s_v5`, or recreate the resource group and network in another region |
+| `SkuNotAvailable` | Size restricted or out of capacity in that region | Use `Standard_D8s_v5`, or recreate the resource group and network in another region |
 | `[FAIL] Python 3.11 is required` from start.sh | Ubuntu 24.04 ships Python 3.12 | Install 3.11 from the deadsnakes PPA and activate a 3.11 venv before running the script (Step 6); do not change `target-version` |
-| Chat takes 10-30 seconds | Expected on CPU | Use `tinyllama` for the easier labs, add vCPUs, or add a GPU later |
-| Chat takes over a minute or times out | Several people prompting at once, or too little RAM | One person per lab at a time; check `free -h` and `htop` |
+| Chat takes 10-30 seconds | Expected on CPU | Use `tinyllama` for easier labs, add vCPUs, or add a GPU |
+| Chat takes over a minute or times out | Concurrent prompts or insufficient RAM | One member per lab at a time; check `free -h` and `htop` |
 | `lscpu` shows no `avx2` | Unsuitable VM size | Resize to a Dasv5 or Dsv5 size |
-| start.sh says Ollama not reachable | Ollama service not running | `sudo systemctl status ollama`, then `sudo systemctl start ollama` |
-| `ssh` to the `100.x.y.z` address fails or times out | WSL is not on the tailnet, the VM is deallocated, or the key expired | Install Tailscale inside WSL (Step 5); `az vm start`; check `tailscale status` and key expiry in the admin console |
-| `Permission denied (publickey)` | Your public key is not in `authorized_keys`, or Tailscale SSH is on | Make sure SSH offers the right key (use -i \~/id\_ed25519, or move the key into \~/.ssh), add it with Azure Run Command, and turn Tailscale SSH off (Step 5) |
-| Pages load but login or chat fails in the browser | App was opened by its 100.x.y.z address; the backend rejects that origin (the CORS preflight returns 400 in logs/backend.log) | Forward ports 3000 and 8000 over SSH and open http://localhost:3000 (Step 7) |
+| start.sh reports Ollama not reachable | Ollama service not running | `sudo systemctl status ollama`, then `sudo systemctl start ollama` |
+| SSH to `100.x.y.z` fails or times out | Client not on the tailnet, VM deallocated, or node key expired | Install Tailscale inside WSL (Step 5); `az vm start`; check `tailscale status` and key expiry in the admin console |
+| `Permission denied (publickey)` | Public key missing from `authorized_keys`, wrong key offered, or Tailscale SSH enabled | Pass the correct key with `-i` or move it into `~/.ssh`, add it with Azure Run Command, and disable Tailscale SSH (Step 5) |
+| Pages load but login or chat fails | App opened via `100.x.y.z`; backend rejects that origin (CORS preflight returns 400 in `logs/backend.log`) | Forward ports 3000 and 8000 over SSH and open http://localhost:3000 (Step 7) |
 | Port already in use | Previous run still alive | `./scripts/stop.sh`, then start again |
 | Still being charged after "stopping" | VM stopped but not deallocated | `az vm deallocate`; confirm with `az vm list -d` |
