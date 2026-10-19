@@ -2,7 +2,7 @@
 
 A defense layer for RAG-based LLM applications, built and demonstrated against [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable LLM app. Submitted to the AI Cybersecurity Challenge 2026.
 
-> **Status:** work in progress. The environment is set up and the prototype is under development. See [docs/NEXT-STEPS.md](docs/NEXT-STEPS.md).
+> **Status:** work in progress. The environment is set up and the prototype is under development. See the [prototype plan](docs/PROTOTYPE-PLAN.md#status-at-a-glance) for component status and [docs/NEXT-STEPS.md](docs/NEXT-STEPS.md) for the overall checklist.
 
 ## Problem
 
@@ -24,11 +24,14 @@ A demo script runs the same attack before and after the defense is applied and r
 ## Repository layout
 
 ```
-defense/                 # defense layer applied on top of AIGoat (planned)
-scripts/demo.sh          # attack -> apply defense -> re-attack (planned)
-docs/NEXT-STEPS.md       # plan and checklist up to the presentation
+overlay/                 # our defense controls, profile and prompt, installed into AIGoat (planned)
+eval/                    # attack and benign corpora + evaluation harness (planned)
+docs/PROTOTYPE-PLAN.md   # living design plan: components, schedule, gates, status
+docs/NEXT-STEPS.md       # checklist up to the presentation
 team-setup-runbook.md    # deploying AIGoat on Azure behind Tailscale
 ```
+
+See [docs/PROTOTYPE-PLAN.md](docs/PROTOTYPE-PLAN.md#repository-layout-and-install) for the full planned layout.
 
 ## Getting started
 

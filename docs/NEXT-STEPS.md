@@ -25,19 +25,11 @@ Plan for getting from a working AIGoat environment to a rehearsed demo for the A
 
 ## 2. Build the prototype (Mon Oct 19 – Wed Oct 21)
 
-- [ ] **Scaffold the repo:**
-  ```
-  defense/          # patch or layer applied on top of AIGoat
-  scripts/demo.sh   # attack -> apply defense -> re-attack
-  docs/STRATEGY.md  # challenge strategy
-  README.md
-  ```
-- [ ] **Write the attack → defend → re-attack script before any defense code.** Pick one RAG poisoning or prompt injection attack that reliably succeeds at AIGoat's lowest defense level, and make it reproducible from a clean reset (`./scripts/stop.sh --clean && ./scripts/start.sh`). It is the backbone of the demo and of the metrics.
-- [ ] **Add defenses one at a time**, re-running the script after each:
-  - [ ] Provenance tagging on knowledge-base and RAG content
-  - [ ] Input/output guard
-  - [ ] Canary tokens to detect leakage
-  - [ ] Audit log
+The design, components, owners, day-by-day schedule and gates are in **[PROTOTYPE-PLAN.md](PROTOTYPE-PLAN.md)**; track progress in its [status table](PROTOTYPE-PLAN.md#status-at-a-glance). Headline items:
+
+- [ ] **Measure the stock Level 2 baseline first** with the [evaluation harness](PROTOTYPE-PLAN.md#evaluation-harness), so every defense is judged against real numbers.
+- [ ] **Pass the Mon night gate:** `cyberaware.trust_gate` stops a CTF 7 payload, or the scope narrows to the leakage defense ([gates](PROTOTYPE-PLAN.md#schedule-and-gates)).
+- [ ] **Build the remaining controls** (`context_harden`, `input_guard`, `canary`, audit log) and the [defense profile](PROTOTYPE-PLAN.md#defense-profile).
 - [ ] **Plan for CPU latency.** Replies take 10–30 s, so keep the live attack to a few prompts. Prepare a fallback: a pre-recorded run or saved results.
 
 ## 3. Polish and rehearse (Thu Oct 22)
