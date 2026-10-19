@@ -20,8 +20,8 @@ Plan for getting from a working AIGoat environment to a rehearsed demo for the A
   az network nsg rule delete -g $RG --nsg-name nsg-aigoat -n AllowInboundSSH
   ```
   Verify that SSH to the public IP times out and the Tailscale address still connects.
-- [ ] **Onboard teammates.** Send Tailscale invites, append each member's public key to `authorized_keys` (runbook Step 5), and assign one AIGoat user per member.
-- [ ] **Run the app in tmux** on the VM so it survives SSH drops (runbook Step 6).
+- [ ] **Onboard teammates.** Send Tailscale invites, append each member's public key to `authorized_keys` ([runbook: Grant team members SSH access](../team-setup-runbook.md#grant-team-members-ssh-access)), and assign one AIGoat user per member.
+- [ ] **Run the app in tmux** on the VM so it survives SSH drops ([runbook: Quick start](../team-setup-runbook.md#quick-start)).
 
 ## 2. Build the prototype (Mon Oct 19 – Wed Oct 21)
 
@@ -51,7 +51,7 @@ Plan for getting from a working AIGoat environment to a rehearsed demo for the A
 
 ## 4. Demo day (Fri Oct 23)
 
-- [ ] Start the VM well before 13:00 and run the smoke test (runbook Step 7).
+- [ ] Start the VM well before 13:00 and run the smoke test ([runbook: Run the smoke test](../team-setup-runbook.md#run-the-smoke-test)).
 - [ ] Open the SSH tunnel and log in ahead of time; keep the fallback recording ready.
 - [ ] Deallocate the VM after the presentation.
 
