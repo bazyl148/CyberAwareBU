@@ -34,12 +34,9 @@ The design, components, owners, day-by-day schedule and gates are in **[PROTOTYP
 
 ## 3. Polish and rehearse (Thu Oct 22)
 
-- [ ] Write the one-page technical overview and finish the README.
-- [ ] Collect before/after metrics:
-  - Attack success rate, with and without the defense
-  - Canary token hits
-  - Latency added by the guards
-- [ ] Rehearse the full 10-minute demo at least twice from a clean reset.
+- [ ] Finish the four [deliverables](PROTOTYPE-PLAN.md#deliverables) the brief requires: working prototype, Git repo that runs from a clean clone, technical overview (problem, solution, how it works, technologies, limitations) and the live demo.
+- [ ] Collect before/after metrics: attack success rate, benign pass rate and added latency ([success criteria](PROTOTYPE-PLAN.md#goal-and-success-criteria)).
+- [ ] Rehearse the 10-minute [demo run sheet](PROTOTYPE-PLAN.md#demo-run-sheet) at least twice from a clean reset. It follows the brief's five points: problem and threat, solution, implementation, live demo, limitations.
 
 ## 4. Demo day (Fri Oct 23)
 

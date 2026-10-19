@@ -7,18 +7,19 @@ This is a living document. Update the [status table](#status-at-a-glance) and [c
 ## Contents
 
 1. [Status at a glance](#status-at-a-glance)
-2. [Goal and success criteria](#goal-and-success-criteria)
-3. [The gap we close](#the-gap-we-close)
-4. [Architecture](#architecture)
-5. [Components](#components)
-6. [Defense profile](#defense-profile)
-7. [Repository layout and install](#repository-layout-and-install)
-8. [Evaluation harness](#evaluation-harness)
-9. [Schedule and gates](#schedule-and-gates)
-10. [Demo run sheet](#demo-run-sheet)
-11. [Risks and fallbacks](#risks-and-fallbacks)
-12. [Open questions](#open-questions)
-13. [Changelog](#changelog)
+2. [Goal and success criteria](#goal-and-success-criteria) (including [alignment with the challenge brief](#alignment-with-the-challenge-brief))
+3. [Deliverables](#deliverables)
+4. [The gap we close](#the-gap-we-close)
+5. [Architecture](#architecture)
+6. [Components](#components)
+7. [Defense profile](#defense-profile)
+8. [Repository layout and install](#repository-layout-and-install)
+9. [Evaluation harness](#evaluation-harness)
+10. [Schedule and gates](#schedule-and-gates)
+11. [Demo run sheet](#demo-run-sheet)
+12. [Risks and fallbacks](#risks-and-fallbacks)
+13. [Open questions](#open-questions)
+14. [Changelog](#changelog)
 
 ---
 
@@ -37,7 +38,9 @@ This is a living document. Update the [status table](#status-at-a-glance) and [c
 | `cyberaware.canary` | Person C | Not started | unit test |
 | Audit log and `audit_tail.py` | Person C | Not started | sample log |
 | Defense profile and install script | Person B | Not started | clean-install run |
-| README, technical overview, demo rehearsal | Person C | Not started | rehearsal notes |
+| README: run from a clean clone | Person C | Not started | fresh-clone test |
+| Technical overview | Person C | Not started | `docs/TECHNICAL-OVERVIEW.md` |
+| Demo rehearsal and backup recording | All | Not started | rehearsal notes, video |
 
 Status values: Not started · In progress · Done · Cut.
 
@@ -56,7 +59,36 @@ The prototype is done when these four measurable targets hold on the team VM, fr
 | Added latency from our controls (excluding the LLM call) | **< 200 ms** per request | control timings in the audit log |
 | Reproducibility | Same numbers after `./scripts/stop.sh --clean && ./scripts/start.sh` and a fresh overlay install | rehearsal run |
 
-The judges asked for a working prototype, a Git repo, a brief technical overview and a live demo, with the demo first. These criteria give the demo its numbers.
+### Alignment with the challenge brief
+
+Industry judges assess "how effectively your team identifies and addresses a realistic AI-security problem" and "the quality of the solution you build". Each requirement in the brief maps to a part of this plan:
+
+| Brief requirement | How the prototype meets it | Where |
+| --- | --- | --- |
+| Protect the app "while maintaining its legitimate functionality" | Benign pass rate ≥ 19/20 is a hard gate, measured the same way as attacks | [Evaluation harness](#evaluation-harness) |
+| Focus area: RAG security | Trust-based exclusion and hardened context for retrieved content | [`trust_gate`](#cyberawaretrust_gate), [`context_harden`](#cyberawarecontext_harden) |
+| Focus area: prompt injection | Obfuscation-aware input scoring; instruction phrases removed from retrieved text | [`input_guard`](#cyberawareinput_guard), [`context_harden`](#cyberawarecontext_harden) |
+| Focus area: sensitive information leakage | Canary detection of system-prompt leaks; stock card and email masking kept | [`canary`](#cyberawarecanary) |
+| A realistic problem | An e-commerce assistant that trusts user-submitted reviews and tips: planted content makes it state a fake refund policy as fact (OWASP LLM08 vector and embedding weaknesses, LLM01 prompt injection) | [The gap we close](#the-gap-we-close) |
+| "Think like both an attacker and a defender" | Attack corpus built from CTF and lab payloads, plus a stock L2 baseline measured before any defense | [Evaluation harness](#evaluation-harness) |
+| Show how the solution "detects, prevents, mitigates, or responds" | **Prevents:** `trust_gate`, `input_guard` · **Mitigates:** `context_harden`, `output.moderate` · **Detects:** `canary`, audit log · **Responds:** refusal message plus an audit record with the reason | [Components](#components) |
+
+[↑ Back to top](#contents)
+
+---
+
+## Deliverables
+
+The brief requires four deliverables. Each has an artifact in this repo, an owner and a due date before the Thu Oct 22 noon freeze.
+
+| # | Deliverable (from the brief) | What the brief asks | Our artifact | Owner | Due |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Working prototype | "A functional security solution addressing the selected AI-security problem" | `overlay/` installed on the team VM via `scripts/install-overlay.sh` | Person B | Wed Oct 21 |
+| 2 | Git repository | "Complete source code… the code and necessary files required to understand and run the solution" | This repo: overlay, patch, install script, eval harness, tests, `results/metrics.md`, and a README that runs from a clean clone | Person C | Thu Oct 22 |
+| 3 | Brief technical overview | "The security problem, proposed solution, how it works, technologies used, and any important limitations or challenges" | `docs/TECHNICAL-OVERVIEW.md`, with exactly those five headings, about 2 pages, reusing this plan's diagram and metrics | Person C | Draft Wed, final Thu |
+| 4 | Final presentation and live demo | 10 minutes, Oct 23 at 13:00, covering five points; "Prioritize the live demonstration over slides" | [Demo run sheet](#demo-run-sheet), at most 3 slides, plus a backup recording | All | Rehearsed Thu |
+
+The brief doesn't say where or by when deliverables 1–3 are submitted. That is tracked in [Open questions](#open-questions).
 
 [↑ Back to top](#contents)
 
@@ -290,19 +322,20 @@ Four working days remain. Each person owns one stream, and two gates force an ea
 
 ## Demo run sheet
 
-The 10 minutes follow the strategy's timeline, with the exact action for each slot.
+The 10 minutes follow the five points the brief lists, in its order, with the live demo taking half the time ("Prioritize the live demonstration over slides").
 
-| Time | Content | Action |
-| --- | --- | --- |
-| 0:00–1:00 | The threat: a poisoned review makes the shop bot state a fake policy as fact | One sentence, no slides |
-| 1:00–3:30 | Attack with stock Level 2 | Backend on the stock profile; send the CTF 7 replay prompt; the bot quotes the planted "policy" |
-| 3:30–6:30 | Same attack with our defense | Restart the backend with `DEFENSE_PROFILES_PATH`; resend; the bot answers from trusted data; run `tools/audit_tail.py` to show the `trust_gate` exclusion and reason |
-| 6:30–7:30 | Normal questions still work, plus numbers | Two benign questions live; show `results/metrics.md` |
-| 7:30–8:30 | Architecture | The [diagram](#architecture) |
-| 8:30–9:30 | Limitations and next steps | Rule-based detection limits, single trust model, CTF endpoint bypasses profiles |
-| 9:30–10:00 | Buffer | — |
+| Time | Brief point | Content | Action |
+| --- | --- | --- | --- |
+| 0:00–1:00 | 1. Problem and threat | A poisoned product review makes the shop assistant state a fake refund policy as fact; why this is realistic for any RAG app that indexes user content | One slide or none |
+| 1:00–2:00 | 2. Proposed solution | Trust-aware retrieval, hardened context, input and output guards, audit log | The [architecture diagram](#architecture) (slide 1) |
+| 2:00–2:45 | 3. Implementation | Python controls on AIGoat's defense-control framework, a YAML profile, a rule-based design (no extra LLM call, so no added 10–30 s), and the eval harness | One sentence per layer, same slide |
+| 2:45–4:45 | 4. Live demo: attack | Backend on the stock Level 2 profile; send the CTF 7 replay prompt; the bot quotes the planted "policy" | Live, browser at `localhost:3000` |
+| 4:45–6:45 | 4. Live demo: defense | Restart the backend with `DEFENSE_PROFILES_PATH`; resend; the bot answers from trusted data; `tools/audit_tail.py` shows the `trust_gate` exclusion and reason | Live, second terminal |
+| 6:45–7:45 | 4. Live demo: functionality kept | Two normal shopping questions answered correctly; `results/metrics.md` shows attack success rate, benign pass rate and added latency | Live, then slide 2 (metrics) |
+| 7:45–9:15 | 5. Limitations and future work | Rule-based detection can be paraphrased around; one trust model for all content; AIGoat's CTF endpoint bypasses profiles; next: per-source trust scoring, an LLM judge on a GPU | Slide 3 |
+| 9:15–10:00 | — | Buffer and questions | — |
 
-Warm the model with one throwaway prompt before going on stage. Replies take 10–30 s on CPU, so narrate while waiting.
+Warm the model with one throwaway prompt before going on stage. Replies take 10–30 s on CPU, so narrate the architecture while waiting. If the network fails, switch to the backup recording at the same point in the timeline.
 
 [↑ Back to top](#contents)
 
@@ -329,7 +362,11 @@ Answer these as early as possible; each one can change a component. Mark them re
 
 | Question | Owner | Status |
 | --- | --- | --- |
+| Is the team's registration confirmed? (Only 5 teams accepted, first-come, first-served; deadline was Oct 9) | Team lead | Open: blocks everything |
 | May we patch AIGoat's backend, or must the defense sit in front of it? | Person C (ask the mentors) | Open |
+| Where and by when do we submit the Git repo and technical overview? (The brief and site don't say) | Person C (ask the CS Help Center) | Open |
+| Is there a length or format for the technical overview? (Not specified; planned at about 2 pages, Markdown) | Person C (ask the mentors) | Open |
+| Can we present from our own laptop, and does the venue network allow SSH or Tailscale? | Person C (ask the mentors) | Open |
 | Which `trust_tier` values does the seed data use? | Person B | Open (check `scripts/seed.py`) |
 | What is the stock L2 attack success rate on our corpus? | Person A | Open (baseline, Tue) |
 | Do retrieval candidates carry `is_user_injected` and `trust_tier`? | Person B | **Resolved:** yes, `app/rag/retrieval.py` populates both |
@@ -344,6 +381,7 @@ Answer these as early as possible; each one can change a component. Mark them re
 
 | Date | Change |
 | --- | --- |
+| 2026-10-19 | Aligned with the official challenge brief: added the brief-alignment table and the Deliverables section, reordered the demo run sheet to the brief's five presentation points, split the docs work into separate status rows, and added four open questions (registration, submission method, overview format, venue network). |
 | 2026-10-19 | Plan created from the team strategy and a read of AIGoat `bb3cd1bbd1e0`. Resolved three open questions from the source. |
 
 [↑ Back to top](#contents)
