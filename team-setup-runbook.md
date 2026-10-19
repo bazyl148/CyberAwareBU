@@ -558,12 +558,16 @@ if (( TUNNEL )); then
 fi
 ```
 
-Make it executable and run it:
+Make it executable, convert it to Unix line endings, and run it:
 
 ```bash
 chmod +x ~/bin/aigoat-start.sh
+sed -i 's/\r$//' ~/bin/aigoat-start.sh   # strip Windows (CRLF) line endings
 ~/bin/aigoat-start.sh --start-vm    # after auto-shutdown; omit the flag if the VM is already running
 ```
+
+> [!IMPORTANT]
+> If the script fails with `env: 'bash\r': No such file or directory`, it has Windows (CRLF) line endings, usually because it was pasted or saved in a Windows editor. Run `sed -i 's/\r$//' ~/bin/aigoat-start.sh` again **after every edit**, or set your editor to save with LF endings (in VS Code, click **CRLF** in the status bar and choose **LF**). `file ~/bin/aigoat-start.sh` shows "CRLF line terminators" when the fix is needed.
 
 | Option | Effect |
 | --- | --- |
@@ -686,6 +690,7 @@ Then remove the `aigoat-azure` machine from the Tailscale admin console.
 | Pages load but login or chat fails | App opened via `100.x.y.z`; backend rejects that origin | Use the [SSH tunnel](#open-the-app-through-an-ssh-tunnel) and http://localhost:3000 |
 | "Invalid credentials" for every user | Wrong origin, or database not seeded | See [Login fails for every user](#login-fails-for-every-user) |
 | Port already in use | Previous run still alive | `./scripts/stop.sh`, then start again |
+| `env: 'bash\r': No such file or directory` running a script | The file has Windows (CRLF) line endings, usually from copying it through a Windows editor | `sed -i 's/\r$//' <script>` (or `dos2unix <script>`), then run it again |
 | Still being charged after "stopping" | VM stopped but not deallocated | `az vm deallocate`; confirm with `az vm list -d` |
 
 #### SSH permission denied

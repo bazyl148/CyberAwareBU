@@ -25,19 +25,21 @@ This is a living document. Update the [status table](#status-at-a-glance) and [c
 
 ## Status at a glance
 
-**Last updated:** Mon Oct 19, 2026 · **Next gate:** Mon Oct 19 night, `trust_gate` blocks a CTF 7 payload ([details](#schedule-and-gates))
+**Last updated:** Mon Oct 19, 2026 · **Next gate:** Mon Oct 19 night: install the overlay on the VM and confirm CTF 7 gives no flag at Level 2 ([details](#schedule-and-gates))
 
 | Component | Owner | Status | Evidence |
 | --- | --- | --- | --- |
 | Baseline: stock L2 attack success rate | Person A | Not started | `results/metrics.md` |
 | Attack and benign corpora | Person A | Not started | `eval/attacks.yaml`, `eval/benign.yaml` |
 | Evaluation harness | Person A | Not started | `eval/run_eval.py` |
-| `cyberaware.trust_gate` | Person B | Not started | unit test |
+| P1: CTF chat honours the defense level | Person B | Done (unit-tested; VM check pending) | `patches/0002-challenge-chat-defense.patch`, `tests/test_challenge_chat_defense.py` |
+| P2: `cyberaware.trust_gate` | Person B | Done (unit-tested; VM check pending) | `overlay/cyberaware/trust_gate.py`, `tests/test_trust_gate.py` |
+| P3: knowledge-base write guard | Person B | Done (unit-tested; VM check pending) | `patches/0003-kb-write-guard.patch`, `tests/test_kb_write_guard.py` |
 | `cyberaware.context_harden` | Person B | Not started | unit test |
 | `cyberaware.input_guard` | Person C | Not started | unit test |
 | `cyberaware.canary` | Person C | Not started | unit test |
-| Audit log and `audit_tail.py` | Person C | Not started | sample log |
-| Defense profile and install script | Person B | Not started | clean-install run |
+| Audit log and `audit_tail.py` | Person C | In progress (helper done, `audit_tail.py` to do) | `overlay/cyberaware/audit.py` |
+| Defense profile and install script | Person B | Done (tested on a fresh pinned checkout) | `overlay/config/cyberaware_profiles.yml`, `scripts/install-overlay.sh`, `tests/test_profile.py` |
 | README: run from a clean clone | Person C | Not started | fresh-clone test |
 | Technical overview | Person C | Not started | `docs/TECHNICAL-OVERVIEW.md` |
 | Demo rehearsal and backup recording | All | Not started | rehearsal notes, video |
@@ -66,7 +68,7 @@ Industry judges assess "how effectively your team identifies and addresses a rea
 | Brief requirement | How the prototype meets it | Where |
 | --- | --- | --- |
 | Protect the app "while maintaining its legitimate functionality" | Benign pass rate ≥ 19/20 is a hard gate, measured the same way as attacks | [Evaluation harness](#evaluation-harness) |
-| Focus area: RAG security | Trust-based exclusion and hardened context for retrieved content | [`trust_gate`](#cyberawaretrust_gate), [`context_harden`](#cyberawarecontext_harden) |
+| Focus area: RAG security | Trust-based exclusion and hardened context for retrieved content | [`trust_gate`](#p2-cyberawaretrust_gate), [`context_harden`](#cyberawarecontext_harden) |
 | Focus area: prompt injection | Obfuscation-aware input scoring; instruction phrases removed from retrieved text | [`input_guard`](#cyberawareinput_guard), [`context_harden`](#cyberawarecontext_harden) |
 | Focus area: sensitive information leakage | Canary detection of system-prompt leaks; stock card and email masking kept | [`canary`](#cyberawarecanary) |
 | A realistic problem | An e-commerce assistant that trusts user-submitted reviews and tips: planted content makes it state a fake refund policy as fact (OWASP LLM08 vector and embedding weaknesses, LLM01 prompt injection) | [The gap we close](#the-gap-we-close) |
@@ -100,12 +102,14 @@ Stock Level 2 already runs four controls on the knowledge-base surface. Each one
 
 | Stock L2 control (`rag.kb`) | What it does | What it misses | Our fix |
 | --- | --- | --- | --- |
-| `retrieval.provenance` | Labels each chunk with `trust_tier`, scores and a citation | Only **annotates**: untrusted and user-injected chunks still reach the prompt | [`trust_gate`](#cyberawaretrust_gate) |
-| `retrieval.injection_scan` | Drops chunks matching 13 regexes in `app/rag/injection_detector.py` | Authority framing ("our official policy", "eligible for") and paraphrased or obfuscated overrides pass | [`trust_gate`](#cyberawaretrust_gate), [`context_harden`](#cyberawarecontext_harden) |
+| `retrieval.provenance` | Labels each chunk with `trust_tier`, scores and a citation | Only **annotates**: untrusted and user-injected chunks still reach the prompt | [`trust_gate`](#p2-cyberawaretrust_gate) |
+| `retrieval.injection_scan` | Drops chunks matching 13 regexes in `app/rag/injection_detector.py` | Authority framing ("our official policy", "eligible for") and paraphrased or obfuscated overrides pass | [`trust_gate`](#p2-cyberawaretrust_gate), [`context_harden`](#cyberawarecontext_harden) |
 | *(none: prompt build)* | `app/rag/service.py` joins chunks as `"Context:\n" + chunks` | No delimiters or data framing, so the model can't tell retrieved text from instructions | [`context_harden`](#cyberawarecontext_harden) |
 | `input.validate`, `intent.classify` (`chat.cracky`) | Strips literal injection phrases; keyword intent score | Case, Unicode, base64 and leetspeak variants of the same phrases | [`input_guard`](#cyberawareinput_guard) |
 | `output.moderate` | Strips HTML, masks cards and emails, truncates | No way to detect that the system prompt itself leaked | [`canary`](#cyberawarecanary) |
 | `app/defense/telemetry.py` | Logs allow and block per request | No per-control reason or chunk ids, so there is nothing to show on stage | [Audit log](#audit-log) |
+| *(none: CTF chat)* | `app/api/challenge_chat.py` sends raw KB hits to the model and hardcodes `defense_level=0` | **No defense level applies to the CTF challenges at all**, so CTF 7 can be won at any level | [P1: CTF chat honours the defense level](#p1-ctf-chat-honours-the-defense-level) |
+| *(none: KB writes)* | `app/api/rag.py` stores what the client sends | Any user can pick `trust_tier` and `owner_id`, and can **edit any entry, including trusted `system` entries**, which keep their trusted labels | [P3: knowledge-base write guard](#p3-knowledge-base-write-guard) |
 
 **Why CTF 7 is the headline:** its evaluator (`app/challenges/evaluators/context_poisoning.py`) only fires when the reply relies on an `is_user_injected` KB entry. Stock L2 never filters on that flag. Excluding those entries by trust removes the attack's precondition rather than pattern-matching its wording.
 
@@ -145,7 +149,7 @@ Our controls plug into AIGoat's existing defense framework, so the request path 
   reply to user                       every [cyberaware.*] decision ──▶ logs/cyberaware-audit.jsonl
 ```
 
-`[brackets]` mark our controls; everything else is stock.
+`[brackets]` mark our controls; everything else is stock. With [P1](#p1-ctf-chat-honours-the-defense-level), the CTF challenge chat runs the same three stages: input and output use the `chat.cracky` profile, and retrieval uses the `rag.kb` profile.
 
 [↑ Back to top](#contents)
 
@@ -155,15 +159,44 @@ Our controls plug into AIGoat's existing defense framework, so the request path 
 
 Each component lists what it decides, how, which stock code it reuses, and the test that proves it. All controls are rule-based, because an extra LLM call adds 10–30 s per request on the CPU-only VM.
 
-### `cyberaware.trust_gate`
+### P1: CTF chat honours the defense level
 
-**Stage:** RETRIEVAL · **Action:** TRANSFORM · **Owner:** Person B
+**Type:** AIGoat patch `patches/0002-challenge-chat-defense.patch` · **Status:** Done, unit-tested · **Owner:** Person B
+
+Makes the defense level the user picks in the navbar apply to the CTF challenges, which stock AIGoat skips entirely.
+
+- **What it does:** in `app/api/challenge_chat.py`, at Level 1 and above:
+  1. **Input:** runs the `chat.cracky` input controls through `defense_pipeline.process_input`. A blocked prompt never reaches the model, and the user gets AIGoat's rejection message.
+  2. **Retrieval:** a new `_defend_retrieval()` runs the `rag.kb` retrieval controls (including `trust_gate`) over the knowledge-base hits. Only chunks left in context go into the prompt.
+  3. **Output:** runs `defense_pipeline.moderate_output` on the reply.
+  4. **Evaluation:** the challenge evaluator now gets the real `defense_level` and judges only the entries the model actually saw, so a "no flag" result is honest.
+- **Level 0** keeps the stock, undefended path, so the challenges stay playable.
+- **Proof:** `tests/test_challenge_chat_defense.py` shows Level 2 keeps only trusted content, Level 1 (stock) still lets the poison through, and a poisoned chunk owned by another user is also dropped.
+
+### P2: `cyberaware.trust_gate`
+
+**Stage:** RETRIEVAL · **Action:** TRANSFORM · **Status:** Done, unit-tested · **Owner:** Person B
 
 Excludes retrieved chunks that aren't trusted enough to be quoted as fact. It is the primary fix for CTF 3 and CTF 7.
 
-- **What it does:** for each candidate in `decision.context["candidates"]`, sets `included_in_context = False` when `is_user_injected` is true or `trust_tier` isn't in an allowlist (default: `curated`, `system`; confirm the real tier names in the seed data). Records `excluded_by_control` and a reason on the chunk, the same way `retrieval.injection_scan` does.
-- **Reuses:** the candidate dict fields that `app/rag/retrieval.py` already populates (`is_user_injected`, `trust_tier`, `included_in_context`).
-- **Proof:** a unit test with a user-injected chunk and a curated chunk, where only the curated chunk stays included. Then the CTF 7 payload replay in the harness.
+- **What it does:** excludes a chunk when the server marked it `is_user_injected`, or when its `trust_tier` isn't allowlisted (default: `system` only; override with `CYBERAWARE_TRUSTED_TIERS=system,partner`). The check uses `is_user_injected` first because the server always sets that flag, while stock AIGoat lets the client choose `trust_tier`. It sets both `included_in_context = False` and `excluded_by_control`, because `apply_token_budget()` in `app/rag/retrieval.py` re-includes any chunk without that marker. Each exclusion is written to the [audit log](#audit-log) with the entry id, title, reason and elapsed time.
+- **Code:** `overlay/cyberaware/trust_gate.py`, registered through `patches/0001-register-cyberaware.patch`.
+- **Proof:** `tests/test_trust_gate.py` (9 tests) covers user-injected chunks, a spoofed `system` tier, non-allowlisted tiers, the token-budget marker, chunks already dropped by ACL, other stages, environment config and audit records.
+
+### P3: knowledge-base write guard
+
+**Type:** AIGoat patch `patches/0003-kb-write-guard.patch` · **Status:** Done, unit-tested · **Owner:** Person B
+
+Stops attackers from putting trusted labels on their own content, or rewriting content that is already trusted.
+
+- **What it does:** in `app/api/rag.py`, for non-staff users:
+  - New entries are always `trust_tier="user"` and owned by the author, whatever the client sends.
+  - Users can edit only entries they created, so other users' entries and `system` entries return **403**.
+  - Any edit by a non-staff user marks the entry as user content.
+
+  Staff (`is_staff`) keep full control.
+- **Lab compatibility:** this deliberately closes AIGoat's trust-tier spoofing lab. It's on by default; set `CYBERAWARE_KB_WRITE_GUARD=0` in the backend's environment to restore stock behaviour for that lab.
+- **Proof:** `tests/test_kb_write_guard.py` (6 tests, in-memory SQLite) covers spoofing, editing a trusted entry, editing your own entry, staff edits and the off switch.
 
 ### `cyberaware.context_harden`
 
@@ -205,11 +238,11 @@ Detects that the model has leaked its hidden instructions, and replaces the repl
 
 ### Audit log
 
-**Type:** shared helper, not a control · **Owner:** Person C
+**Type:** shared helper, not a control · **Status:** helper done (`overlay/cyberaware/audit.py`), `tools/audit_tail.py` to do · **Owner:** Person C
 
 Gives every decision our controls make a reason that can be shown on stage and counted in the metrics.
 
-- **What it does:** each `cyberaware.*` control calls `audit.record(...)`, which appends one JSON line to `logs/cyberaware-audit.jsonl`. Each line holds the time, surface, level, control id, action, reason, affected chunk ids and elapsed milliseconds. `tools/audit_tail.py` pretty-prints the log live.
+- **What it does:** each `cyberaware.*` control calls `audit.record(...)`, which appends one JSON line to `logs/cyberaware-audit.jsonl` (override the path with `CYBERAWARE_AUDIT_LOG`). Each line holds the time, surface, level, control id, action, reason, user id, affected chunk ids and elapsed milliseconds. `tools/audit_tail.py` will pretty-print the log live; until then, use `tail -f ~/AIGoat/logs/cyberaware-audit.jsonl`.
 - **Reuses:** sits alongside the stock `TelemetryLogger` (`app/defense/telemetry.py`) without changing it. Writes are fail-safe, like the stock logger.
 - **Proof:** after a harness run, the log contains one record per block and the latency column feeds the [success criteria](#goal-and-success-criteria).
 
@@ -221,28 +254,25 @@ Stock `output.moderate` stays last in the output chain, unchanged.
 
 ## Defense profile
 
-Our defense is switched on by pointing AIGoat at our own profile file, not by adding a new level. The stock file and UI stay untouched.
+Our defense lives in our own profile file, not in a new level. The stock profile file and the UI stay untouched.
 
-- **File:** `overlay/config/cyberaware_profiles.yml`, a copy of AIGoat's `config/defense_profiles.yml` with only Level 2 of `chat.cracky` and `rag.kb` extended:
+- **File:** `overlay/config/cyberaware_profiles.yml`, a copy of AIGoat's `config/defense_profiles.yml`. Today it changes only `rag.kb` Level 2:
 
   ```yaml
   rag.kb:
     2:
-      intent: >
-        Stock Level 2 plus trust-tier exclusion of untrusted chunks, delimited and
-        sanitized context, and canary-based system-prompt leak detection.
       controls:
         - "retrieval.provenance"
         - "retrieval.acl"
-        - "cyberaware.trust_gate"
+        - "cyberaware.trust_gate"        # added (done)
         - "retrieval.injection_scan"
-        - "cyberaware.context_harden"
-        - "cyberaware.canary"
         - "output.moderate"
   ```
 
-- **Rules kept from the stock file:** Level 0 stays empty on every surface, and Level 2 keeps every Level 1 control family. An unknown control id stops the backend, so a typo can't silently disable the defense.
-- **Toggle:** start the backend with `DEFENSE_PROFILES_PATH=…/cyberaware_profiles.yml` for "defense on", or without it for stock behaviour. A backend restart takes seconds; Ollama and the model stay loaded.
+  As the other controls land, they're added here: `cyberaware.context_harden` after `retrieval.injection_scan`, `cyberaware.canary` before `output.moderate`, and `cyberaware.input_guard` on `chat.cracky` Level 2.
+- **Rules kept from the stock file:** Level 0 stays empty on every surface, and Level 2 keeps every Level 1 control family. An unknown control id makes AIGoat's profile loader raise an error instead of running without the control, so a typo can't silently disable the defense. Profiles load on the first Level 1 or 2 request, not at startup, so check `logs/backend.log` after that first request. `tests/test_profile.py` loads the file through AIGoat's own validator, and checks that nothing but `rag.kb` Level 2 differs from stock.
+- **Loading:** `install-overlay.sh` points `defense.profiles_path` in `config/config.yml` at our file, so it survives restarts with no extra environment variables.
+- **Toggle for the demo:** the **defense level in the navbar**, which AIGoat stores per user and P1 now honours in the CTF chat. Level 0 is undefended and Level 2 is our defense. It's live, with no backend restart. The stock Level 2 numbers for comparison are measured before the overlay is installed (see [Evaluation harness](#evaluation-harness)).
 
 [↑ Back to top](#contents)
 
@@ -254,29 +284,37 @@ Our code lives in this repo as an overlay on a pinned AIGoat commit, so the repo
 
 ```
 overlay/
-  cyberaware/            # controls (trust_gate, context_harden, input_guard, canary) + audit helper
+  cyberaware/            # controls package: trust_gate (done), audit helper (done); context_harden, input_guard, canary (to do)
   config/cyberaware_profiles.yml
-  prompts/rag/product_assistant.md   # stock prompt + canary placeholder
 patches/
-  0001-register-cyberaware.patch     # the only core edit: register our controls
+  0001-register-cyberaware.patch     # register our controls in AIGoat's registry
+  0002-challenge-chat-defense.patch  # P1: CTF chat honours the defense level
+  0003-kb-write-guard.patch          # P3: no spoofed trust labels, no editing others' entries
 scripts/
-  install-overlay.sh     # pin AIGoat, copy overlay, apply patch, generate canary
-eval/                    # corpora + harness
-tests/                   # unit tests for our controls
-tools/audit_tail.py
-results/metrics.md       # committed results table
+  install-overlay.sh     # copy the overlay, apply patches, switch profiles (--uninstall reverts)
+tests/                   # 21 unit tests against a real AIGoat checkout with the overlay installed
+eval/                    # corpora + harness (to do)
+tools/audit_tail.py      # (to do)
+results/metrics.md       # committed results table (to do)
 ```
 
 - **Pinned AIGoat commit:** `bb3cd1bbd1e0` (main, Oct 10, 2026). Update the pin deliberately, never implicitly.
-- **The one core edit:** `app/defense/controls/__init__.py` must import and register our controls, because AIGoat has no plugin hook. The patch adds the import and calls `_register_if_missing` for each one. If the mentors forbid core edits, see [Risks and fallbacks](#risks-and-fallbacks).
-- **`install-overlay.sh`:**
-  1. Checks out the pinned commit in `~/AIGoat`.
-  2. Copies `overlay/cyberaware/` to `app/defense/controls/cyberaware/` and applies the patch.
-  3. Installs our profile and prompt.
-  4. Writes a random canary to a gitignored file.
-  5. Prints the `DEFENSE_PROFILES_PATH` export.
+- **Core edits:** three small patches (2 + about 50 + about 25 lines). AIGoat has no plugin hook for registering controls, and P1 and P3 fix gaps in AIGoat's own endpoints. If the mentors forbid core edits, see [Risks and fallbacks](#risks-and-fallbacks).
+- **Install on the VM** (from a clone of this repo):
 
-  It is idempotent, so re-running it is safe.
+  ```bash
+  scripts/install-overlay.sh ~/AIGoat              # copy package, apply patches, switch profiles
+  cd ~/AIGoat && ./scripts/stop.sh && ./scripts/start.sh
+  scripts/install-overlay.sh --uninstall ~/AIGoat  # back to stock AIGoat
+  ```
+
+  The script checks that every patch applies before changing anything, skips steps already done (safe to re-run), and warns if AIGoat isn't at the pinned commit. Tested on a fresh pinned checkout: install, re-run and uninstall all leave the expected tree.
+- **Run the tests** (no Ollama or Chroma needed):
+
+  ```bash
+  python3 -m venv .venv && .venv/bin/pip install pytest pyyaml pydantic fastapi "sqlalchemy[asyncio]" aiosqlite httpx "python-jose[cryptography]" "passlib[bcrypt]" python-multipart
+  AIGOAT_DIR=~/AIGoat .venv/bin/python -m pytest tests/
+  ```
 - **Licensing:** AIGoat platform code is Apache-2.0 (keep `LICENSE` and `NOTICE` and credit the project). Challenge content and prompts are CC BY-NC-SA 4.0; we copy only the one prompt file, attributed. Don't use the AI Goat name or logo for our product.
 
 [↑ Back to top](#contents)
@@ -287,13 +325,13 @@ results/metrics.md       # committed results table
 
 The harness turns "it works" into the numbers in the [success criteria](#goal-and-success-criteria), and it is what the demo's results slide shows.
 
-- **Where attacks run:** the `rag.kb` surface API (`app/surfaces/rag_kb.py`) at Level 2, once with the stock profile and once with ours. The CTF challenge endpoint (`app/api/challenge_chat.py`) hardcodes `defense_level=0` and bypasses every profile, so CTF payloads are **replayed** against `rag.kb` rather than played in the CTF UI.
-- **Scoring:** each reply is judged with AIGoat's own evaluator classes (for example `ContextPoisoningEvaluator`, `RAGManipulationEvaluator`, `ChainedExploitEvaluator` in `app/challenges/evaluators/`), so "success" means exactly what AIGoat means by it.
+- **Where attacks run:** the CTF challenge chat API (`POST /api/challenges/{id}/chat`), which P1 makes honour the defense level, in three configurations: Level 0, stock Level 2 (P1 installed with the stock profile), and Level 2 with our profile.
+- **Scoring:** AIGoat's own challenge evaluators decide success (a flag in the response), so "success" means exactly what AIGoat means by it. Attack success rate is the share of runs that return a flag.
 - **Corpora:**
   - `eval/attacks.yaml`: CTF 3, 7 and 8 plus LLM01, LLM04 and LLM08 lab payloads, with at least 5 phrasings each and the poisoned KB entries each needs.
   - `eval/benign.yaml`: 20 normal shopping questions, each with a check that the reply is useful (mentions the product or the policy asked about).
 - **Runner:** `eval/run_eval.py` seeds the poisoned entries and runs each prompt N = 3 times per profile. It writes `results/metrics.md` with attack success rate per attack family, benign pass rate, median added latency and variants tested.
-- **Unit tests:** `tests/` covers each control with AIGoat's `tests/fake_llm.py` and `tests/fake_embed.py`, so it runs in seconds without Ollama. The pattern follows `tests/test_defense_controls.py`.
+- **Unit tests:** `tests/` runs against a real AIGoat checkout with the overlay installed, using AIGoat's own control chain, profile loader and API functions, without Ollama or Chroma. 21 tests run in about 1 second. A mutation check (the gate disabled on purpose) makes 6 of them fail, so the tests really exercise the defense.
 
 [↑ Back to top](#contents)
 
@@ -305,7 +343,7 @@ Four working days remain. Each person owns one stream, and two gates force an ea
 
 | Day | Person A (attacks and eval) | Person B (retrieval defenses) | Person C (guards, audit, docs) |
 | --- | --- | --- | --- |
-| Mon Oct 19 | Reproduce CTF 3, 7, 8 against `rag.kb` at L0–L2; start `attacks.yaml` | Install script skeleton; `trust_gate` | Audit helper; `input_guard` skeleton |
+| Mon Oct 19 | Reproduce CTF 7 (then 3 and 8) in the CTF UI at L0 and stock L2; start `attacks.yaml` | ~~Install script; `trust_gate`; P1; P3~~ done; install on the VM | Audit helper (done); `input_guard` skeleton |
 | Tue Oct 20 | Harness runs end to end; record the **stock L2 baseline** | `context_harden`; profile file | `input_guard` tuned; `canary` |
 | Wed Oct 21 | `benign.yaml`; first full before/after run | Integrate; fix false positives | `audit_tail.py`; draft technical overview |
 | Thu Oct 22 | Final metrics run, commit `results/metrics.md` | **Feature freeze at noon**; clean-install test | README; rehearse twice; record backup video |
@@ -313,7 +351,7 @@ Four working days remain. Each person owns one stream, and two gates force an ea
 
 **Gates**
 
-- **Mon Oct 19, night:** `trust_gate` stops one CTF 7 payload in a manual test against `rag.kb`. If not, narrow the scope to the leakage defense (`canary` plus `output.moderate`: strategy option B) and say so in the changelog.
+- **Mon Oct 19, night:** with the overlay installed on the VM, CTF 7 still gives a flag at Level 0 and gives **no flag** at Level 2, with a `trust_gate` record in the audit log. Step-by-step: [Defense Setup and Check Guide](DEFENSE-SETUP-GUIDE.md), Parts A to C. If not, narrow the scope to the leakage defense (`canary` plus `output.moderate`: strategy option B) and say so in the changelog.
 - **Thu Oct 22, noon:** feature freeze. After this point, only bug fixes and docs.
 
 [↑ Back to top](#contents)
@@ -329,11 +367,13 @@ The 10 minutes follow the five points the brief lists, in its order, with the li
 | 0:00–1:00 | 1. Problem and threat | A poisoned product review makes the shop assistant state a fake refund policy as fact; why this is realistic for any RAG app that indexes user content | One slide or none |
 | 1:00–2:00 | 2. Proposed solution | Trust-aware retrieval, hardened context, input and output guards, audit log | The [architecture diagram](#architecture) (slide 1) |
 | 2:00–2:45 | 3. Implementation | Python controls on AIGoat's defense-control framework, a YAML profile, a rule-based design (no extra LLM call, so no added 10–30 s), and the eval harness | One sentence per layer, same slide |
-| 2:45–4:45 | 4. Live demo: attack | Backend on the stock Level 2 profile; send the CTF 7 replay prompt; the bot quotes the planted "policy" | Live, browser at `localhost:3000` |
-| 4:45–6:45 | 4. Live demo: defense | Restart the backend with `DEFENSE_PROFILES_PATH`; resend; the bot answers from trusted data; `tools/audit_tail.py` shows the `trust_gate` exclusion and reason | Live, second terminal |
+| 2:45–4:45 | 4. Live demo: attack | Defense level 0: CTF 7 in the CTF UI; the bot repeats the planted "policy" as official and the flag appears | Live, browser at `localhost:3000` |
+| 4:45–6:45 | 4. Live demo: defense | Switch to an account at defense level 2 (navbar), same question: the bot answers from trusted data, no flag; the audit log shows the `trust_gate` exclusion and reason | Live, second terminal with the audit log |
 | 6:45–7:45 | 4. Live demo: functionality kept | Two normal shopping questions answered correctly; `results/metrics.md` shows attack success rate, benign pass rate and added latency | Live, then slide 2 (metrics) |
-| 7:45–9:15 | 5. Limitations and future work | Rule-based detection can be paraphrased around; one trust model for all content; AIGoat's CTF endpoint bypasses profiles; next: per-source trust scoring, an LLM judge on a GPU | Slide 3 |
+| 7:45–9:15 | 5. Limitations and future work | Rule-based detection can be paraphrased around; one trust model for all content; trusted content can only be curated by staff; next: per-source trust scoring, an LLM judge on a GPU | Slide 3 |
 | 9:15–10:00 | — | Buffer and questions | — |
+
+A flag, once won, stays visible for the rest of that challenge attempt, so use one account for the Level 0 attack and a different account at Level 2 for the defense. The knowledge base is shared, so both accounts face the same planted entry.
 
 Warm the model with one throwaway prompt before going on stage. Replies take 10–30 s on CPU, so narrate the architecture while waiting. If the network fails, switch to the backup recording at the same point in the timeline.
 
@@ -350,7 +390,10 @@ Warm the model with one throwaway prompt before going on stage. Replies take 10�
 | Defense blocks normal questions | Medium | High | `benign.yaml` gate at ≥ 19/20 before feature freeze; tune thresholds, not the corpus |
 | Mentors forbid core edits | Low | Medium | Run our controls in a thin proxy in front of the API instead; same corpora and metrics |
 | Model ignores delimiters and still follows text | Medium | Medium | `trust_gate` removes untrusted chunks before the model sees them; delimiters are a second layer |
-| Upstream AIGoat changes break the patch | Low | Medium | Pinned commit; install script refuses an unexpected commit |
+| Upstream AIGoat changes break the patches | Low | Medium | Pinned commit; the install script checks every patch applies before changing anything |
+| P3 changes stock lab behaviour (trust-tier spoofing, editing others' entries) | Certain | Low | Intended hardening; set `CYBERAWARE_KB_WRITE_GUARD=0` for those labs, and say so in the technical overview |
+| Level 2 chat input controls include NeMo rails, which may call the LLM and add 10–30 s | Medium | Medium | Measure in the harness; if slow, give `chat.cracky` Level 2 in our profile the Level 1 input controls plus `input_guard` |
+| The patched CTF chat behaves differently on the VM than in unit tests | Medium | High | Tonight's gate: install on the VM and play CTF 7 at Level 0 and Level 2 before building anything else |
 
 [↑ Back to top](#contents)
 
@@ -367,11 +410,11 @@ Answer these as early as possible; each one can change a component. Mark them re
 | Where and by when do we submit the Git repo and technical overview? (The brief and site don't say) | Person C (ask the CS Help Center) | Open |
 | Is there a length or format for the technical overview? (Not specified; planned at about 2 pages, Markdown) | Person C (ask the mentors) | Open |
 | Can we present from our own laptop, and does the venue network allow SSH or Tailscale? | Person C (ask the mentors) | Open |
-| Which `trust_tier` values does the seed data use? | Person B | Open (check `scripts/seed.py`) |
+| Which `trust_tier` values does the seed data use? | Person B | **Resolved:** seeded entries are `system` (`scripts/seed.py`); the KB form also offers `user` and `partner`, and in stock AIGoat the client chooses, which is why P3 exists |
 | What is the stock L2 attack success rate on our corpus? | Person A | Open (baseline, Tue) |
 | Do retrieval candidates carry `is_user_injected` and `trust_tier`? | Person B | **Resolved:** yes, `app/rag/retrieval.py` populates both |
 | Does the OUTPUT stage run for `rag.kb`? | Person C | **Resolved:** yes, `app/surfaces/rag_kb.py` calls `moderate_output` at level ≥ 1, but DENY doesn't replace the text, so `canary` uses TRANSFORM |
-| Do CTF challenges go through the defense profiles? | Person A | **Resolved:** no, `app/api/challenge_chat.py` uses `defense_level=0`, so the harness replays payloads on `rag.kb` |
+| Do CTF challenges go through the defense profiles? | Person A | **Resolved:** not in stock AIGoat (`app/api/challenge_chat.py` hardcodes `defense_level=0`); P1 now routes them through the user's level |
 
 [↑ Back to top](#contents)
 
@@ -381,6 +424,8 @@ Answer these as early as possible; each one can change a component. Mark them re
 
 | Date | Change |
 | --- | --- |
+| 2026-10-19 | Added `docs/DEFENSE-SETUP-GUIDE.md`: plain-language install, harmless check and CTF 7 gate steps for the whole team. Corrected the profile-validation note: profiles load on the first Level 1 or 2 request, not at startup. Added `.gitattributes` to keep shell scripts and patches on Unix line endings. |
+| 2026-10-19 | Built P1 (CTF chat honours the defense level), P2 (`cyberaware.trust_gate`), P3 (KB write guard), the audit helper, our profile and `install-overlay.sh`. 21 unit tests pass against AIGoat `bb3cd1bbd1e0`. The demo toggle moves from a backend restart to the per-user navbar level. Found and closed two extra gaps: CTF chat ignored all defenses; any user could edit trusted entries. VM verification is pending. |
 | 2026-10-19 | Aligned with the official challenge brief: added the brief-alignment table and the Deliverables section, reordered the demo run sheet to the brief's five presentation points, split the docs work into separate status rows, and added four open questions (registration, submission method, overview format, venue network). |
 | 2026-10-19 | Plan created from the team strategy and a read of AIGoat `bb3cd1bbd1e0`. Resolved three open questions from the source. |
 

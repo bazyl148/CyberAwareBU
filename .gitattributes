@@ -1,0 +1,7 @@
+# Shell scripts and patches must keep Unix line endings, even when cloned on Windows:
+# a CRLF shebang fails with "env: 'bash\r': No such file or directory",
+# and CRLF patches no longer apply to AIGoat.
+*.sh     text eol=lf
+*.patch  text eol=lf
+*.py     text eol=lf
+*.yml    text eol=lf

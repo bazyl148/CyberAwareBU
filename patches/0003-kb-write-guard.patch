@@ -1,0 +1,63 @@
+diff --git a/app/api/rag.py b/app/api/rag.py
+index 38b0a90..7c4c34f 100644
+--- a/app/api/rag.py
++++ b/app/api/rag.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+ 
++import os
+ from typing import Annotated
+ 
+ from fastapi import APIRouter, Depends, HTTPException, Query
+@@ -45,6 +46,17 @@ class KBEntryUpdate(BaseModel):
+     category: str | None = None
+ 
+ 
++def _kb_write_guard(user: User) -> bool:
++    """CyberAware P3: whether this user's KB writes are restricted.
++
++    Non-staff users cannot choose trust_tier or owner_id, and can only edit
++    entries they own. On by default; CYBERAWARE_KB_WRITE_GUARD=0 restores the
++    stock, spoofable behaviour that the trust-tier lab relies on.
++    """
++    enabled = os.environ.get("CYBERAWARE_KB_WRITE_GUARD", "1") != "0"
++    return enabled and not user.is_staff
++
++
+ def _generate_default_knowledge(products: list[Product]) -> list[dict]:
+     """Generate exactly 10 curated knowledge base entries covering
+     products, refund policy, reviews, and customer support."""
+@@ -329,14 +341,15 @@ async def add_kb_entry(
+         prod = await db.execute(select(Product).where(Product.id == body.product_id))
+         if not prod.scalar_one_or_none():
+             raise HTTPException(status_code=404, detail="Product not found")
++    guarded = _kb_write_guard(user)
+     entry = KnowledgeBaseEntry(
+         product_id=body.product_id,
+         title=body.title,
+         content=body.content,
+         category=body.category,
+         is_user_injected=True,
+-        trust_tier=body.trust_tier or "user",
+-        owner_id=body.owner_id if body.owner_id is not None else user.id,
++        trust_tier="user" if guarded else (body.trust_tier or "user"),
++        owner_id=user.id if guarded or body.owner_id is None else body.owner_id,
+         version=body.version,
+         is_latest=body.is_latest,
+         valid_until=_parse_valid_until(body.valid_until),
+@@ -359,6 +372,15 @@ async def update_kb_entry(
+     entry = result.scalar_one_or_none()
+     if not entry:
+         raise HTTPException(status_code=404, detail="Entry not found")
++    if _kb_write_guard(user):
++        if entry.owner_id != user.id:
++            raise HTTPException(
++                status_code=403,
++                detail="You can only edit knowledge base entries you created.",
++            )
++        # A user edit makes the entry user content, whatever it was before.
++        entry.is_user_injected = True
++        entry.trust_tier = "user"
+     if body.title is not None:
+         entry.title = body.title
+     if body.content is not None:

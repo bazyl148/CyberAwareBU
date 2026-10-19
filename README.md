@@ -24,7 +24,10 @@ A demo script runs the same attack before and after the defense is applied and r
 ## Repository layout
 
 ```
-overlay/                 # our defense controls, profile and prompt, installed into AIGoat (planned)
+overlay/                 # our defense controls package and defense profile, installed into AIGoat
+patches/                 # three small AIGoat patches (register controls, CTF chat defense, KB write guard)
+scripts/install-overlay.sh  # install into ~/AIGoat (or --uninstall to restore stock)
+tests/                   # unit tests, run against a real AIGoat checkout
 eval/                    # attack and benign corpora + evaluation harness (planned)
 docs/PROTOTYPE-PLAN.md   # living design plan: components, schedule, gates, status
 docs/NEXT-STEPS.md       # checklist up to the presentation
@@ -40,7 +43,13 @@ See [docs/PROTOTYPE-PLAN.md](docs/PROTOTYPE-PLAN.md#repository-layout-and-instal
    ```bash
    ssh -L 3000:localhost:3000 -L 8000:localhost:8000 azureuser@<tailscale-ip>
    ```
-3. **Run the demo.** Instructions will be added here once `scripts/demo.sh` is in place.
+3. **Install the defense** on the machine running AIGoat, then restart AIGoat. Step-by-step for the whole team, including a harmless check that it works: **[Defense Setup and Check Guide](docs/DEFENSE-SETUP-GUIDE.md)**.
+   ```bash
+   scripts/install-overlay.sh ~/AIGoat
+   cd ~/AIGoat && ./scripts/stop.sh && ./scripts/start.sh
+   ```
+   Defense level 0 (navbar) stays undefended; level 2 runs our defense, including on the CTF challenges. `scripts/install-overlay.sh --uninstall ~/AIGoat` restores stock AIGoat.
+4. **Run the tests** (no Ollama needed): see [Repository layout and install](docs/PROTOTYPE-PLAN.md#repository-layout-and-install).
 
 ## Results
 
