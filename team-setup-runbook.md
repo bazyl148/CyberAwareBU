@@ -509,6 +509,126 @@ az vm deallocate -g $RG -n $VM
 az vm list -g $RG -d -o table    # PowerState should read: VM deallocated
 ```
 
+## Step 10: Quick start (daily routine)
+
+Once setup is complete, each session follows the same steps. Run them manually, or use the script below to do them in one command.
+
+### Manual steps
+
+1. **Start the VM** if it was deallocated (from your workstation):
+
+   ```bash
+   az vm start -g $RG -n $VM
+   ```
+
+2. **Confirm the VM is on the tailnet:**
+
+   ```bash
+   tailscale ping 100.x.y.z
+   ```
+
+3. **Start the app in tmux on the VM.** This creates the session only if it does not exist, and starts the app only if ports 3000 and 8000 are not already listening:
+
+   ```bash
+   ssh azureuser@100.x.y.z
+   ss -tln | grep -E ':(3000|8000) '   # two lines means the app is already running; skip to step 4
+   tmux new -A -s aigoat               # attach to the session, or create it
+   cd ~/AIGoat && ./scripts/start.sh   # wait for "AI Goat is running!", then Ctrl+b, d
+   exit
+   ```
+
+4. **Open the tunnel** from your workstation and keep the terminal open:
+
+   ```bash
+   ssh -N -L 3000:localhost:3000 -L 8000:localhost:8000 azureuser@100.x.y.z
+   ```
+
+5. **Browse to** http://localhost:3000. Ctrl+C in the tunnel terminal closes the tunnel; the app keeps running on the VM.
+
+### Script
+
+Save this on your workstation (WSL, Linux or macOS) as `~/bin/aigoat-start.sh`, outside the repository, and set `HOST` to the VM's Tailscale IP. Keep the real IP out of version control.
+
+```bash
+#!/usr/bin/env bash
+# Start AIGoat on the team VM over Tailscale and open the SSH tunnel.
+# Usage: aigoat-start.sh [--start-vm] [--no-tunnel]
+set -euo pipefail
+
+HOST="100.x.y.z"          # VM Tailscale IP (tailscale ip -4 on the VM)
+USER_NAME="azureuser"
+SSH_KEY=""                # optional, for example ~/.ssh/id_ed25519
+RG="rg-aigoat"
+VM="vm-aigoat"
+TIMEOUT=600               # seconds to wait for the app; the first run is slow
+
+START_VM=0; TUNNEL=1
+for arg in "$@"; do
+  case "$arg" in
+    --start-vm)  START_VM=1 ;;
+    --no-tunnel) TUNNEL=0 ;;
+    *) echo "Usage: $0 [--start-vm] [--no-tunnel]" >&2; exit 1 ;;
+  esac
+done
+
+SSH_OPTS=(-o ConnectTimeout=10 -o ServerAliveInterval=30)
+[[ -n "$SSH_KEY" ]] && SSH_OPTS+=(-i "$SSH_KEY")
+TARGET="$USER_NAME@$HOST"
+
+# 1. Start the VM if requested (auto-shutdown deallocates it nightly).
+if (( START_VM )); then
+  echo "Starting VM $VM..."
+  az vm start -g "$RG" -n "$VM" --output none
+fi
+
+# 2. Wait for SSH over Tailscale (up to 3 minutes).
+echo "Connecting to $TARGET..."
+for i in $(seq 1 18); do
+  ssh "${SSH_OPTS[@]}" "$TARGET" true 2>/dev/null && break
+  (( i == 18 )) && { echo "Cannot reach $TARGET. Check tailscale status and that the VM is running." >&2; exit 1; }
+  sleep 10
+done
+
+# 3. Start the app in tmux unless it is already running, then wait for both ports.
+ssh "${SSH_OPTS[@]}" "$TARGET" bash -s -- "$TIMEOUT" <<'REMOTE'
+set -euo pipefail
+timeout="$1"
+ports_up() { ss -tln | grep -q ':3000 ' && ss -tln | grep -q ':8000 '; }
+if ports_up; then echo "AIGoat is already running."; exit 0; fi
+tmux has-session -t aigoat 2>/dev/null || tmux new-session -d -s aigoat -c "$HOME/AIGoat"
+tmux send-keys -t aigoat "cd ~/AIGoat && ./scripts/start.sh" C-m
+echo "Starting AIGoat (the first run can take several minutes)..."
+for (( t = 0; t < timeout; t += 5 )); do
+  ports_up && { echo "AIGoat is running."; exit 0; }
+  sleep 5
+done
+echo "Timed out. Last output from the tmux session:" >&2
+tmux capture-pane -p -t aigoat | tail -n 20 >&2
+exit 1
+REMOTE
+
+# 4. Forward the app ports; the backend only accepts the localhost origin.
+if (( TUNNEL )); then
+  echo "Tunnel open: browse to http://localhost:3000 (Ctrl+C to close; the app keeps running)."
+  exec ssh "${SSH_OPTS[@]}" -N -o ExitOnForwardFailure=yes \
+    -L 3000:localhost:3000 -L 8000:localhost:8000 "$TARGET"
+fi
+```
+
+Make it executable and run it:
+
+```bash
+chmod +x ~/bin/aigoat-start.sh
+~/bin/aigoat-start.sh --start-vm    # after auto-shutdown; omit the flag if the VM is already running
+```
+
+Notes:
+
+- `--start-vm` needs the Azure CLI signed in (`az login`). `--no-tunnel` starts the app without opening the tunnel.
+- If your key has a passphrase, load it with `ssh-add` first so the connection retries do not prompt repeatedly.
+- If the script times out, attach to the session with `ssh azureuser@100.x.y.z` and `tmux attach -t aigoat` to see the full output.
+- `ExitOnForwardFailure` stops the tunnel if local port 3000 or 8000 is already in use. Close the other process or the previous tunnel first.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
