@@ -1,7 +1,4 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cyberaware-lockup-dark.svg">
-  <img src="docs/assets/cyberaware-lockup-light.svg" alt="CyberAware: trust the source, not the sentence." width="560">
-</picture>
+<img src="docs/assets/cyberaware-lockup-light.svg" alt="CyberAware: trust the source, not the sentence." width="560">
 
 # CyberAwareBU
 
@@ -130,7 +127,7 @@ tests/                          # 21 unit tests, run against a real AIGoat check
 eval/                           # attack and benign corpora + metrics script (run_eval.py)
 results/metrics.md              # before/after numbers from the last full run
 docs/                           # the documents above
-docs/assets/                    # CyberAware logo (mark and light/dark lockups) and evidence screenshots
+docs/assets/                    # CyberAware logo (light-background versions used in docs; dark-background versions for slides) and evidence screenshots
 ```
 
 ## Limitations and future work

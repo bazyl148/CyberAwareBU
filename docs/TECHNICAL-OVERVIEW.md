@@ -1,7 +1,4 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/cyberaware-mark-dark.svg">
-  <img src="assets/cyberaware-mark.svg" alt="CyberAware mark" width="96">
-</picture>
+<img src="assets/cyberaware-mark.svg" alt="CyberAware mark" width="96">
 
 # CyberAwareBU: Technical Overview
 
