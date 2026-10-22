@@ -1,15 +1,12 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/cyberaware-mark-dark.svg">
-  <img src="assets/cyberaware-mark.svg" alt="CyberAware mark" width="96">
-</picture>
+<img src="assets/cyberaware-mark.svg" alt="CyberAware mark" width="96">
 
-# CyberAwareBU: Technical Overview
+# CyberAware: Technical Overview
 
-**Team CyberAwareBU:** Basile, Chris and Bonté · Bishop's University AI Cybersecurity Challenge 2026 · Focus area: RAG security
+**Team:** Basile, Chris and Bonté · Bishop's University AI Cybersecurity Challenge 2026 · Focus area: RAG security
 
 *Trust the source, not the sentence.*
 
-A defense layer that stops knowledge-base poisoning in retrieval-augmented AI assistants, built and measured on [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable AI shop.
+**CyberAware is a RAG defense layer that stops knowledge-base poisoning in AI assistants.** Built and measured on [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable AI shop.
 
 ---
 
