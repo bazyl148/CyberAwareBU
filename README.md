@@ -1,69 +1,151 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cyberaware-lockup-dark.svg">
+  <img src="docs/assets/cyberaware-lockup-light.svg" alt="CyberAware: trust the source, not the sentence." width="560">
+</picture>
+
 # CyberAwareBU
 
-A defense layer for RAG-based LLM applications, built and demonstrated against [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable LLM app. Submitted to the AI Cybersecurity Challenge 2026.
+**A defense layer that stops knowledge-base poisoning in AI assistants.** Built and measured on [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable AI shop, for the Bishop's University AI Cybersecurity Challenge 2026.
 
-> **Status:** work in progress. The environment is set up and the prototype is under development. See the [prototype plan](docs/PROTOTYPE-PLAN.md#status-at-a-glance) for component status and [docs/NEXT-STEPS.md](docs/NEXT-STEPS.md) for the overall checklist.
+**Team:** Basile, Chris and Bonté · **Focus area:** RAG security · **Read first:** [technical overview](docs/TECHNICAL-OVERVIEW.md)
 
-## Problem
+## Results at a glance
 
-LLM apps that use retrieval-augmented generation (RAG) trust whatever lands in their knowledge base. An attacker who can plant content there, or slip instructions into a prompt, can steer the model into leaking data or ignoring its guardrails.
+AIGoat challenge CTF 7 ("Authoritative Context Poisoning"): five phrasings of the attack, asked three times at each defense level, scored by **AIGoat's own evaluator** ([full results](results/metrics.md)).
 
-In AIGoat the attacker plants content through an Add Document button. In production they never need one: they write a review, support ticket, wiki page or email that the company's own pipeline indexes. See [From Lab to Production](docs/FROM-LAB-TO-PRODUCTION.md) for real paths, known incidents and the limits of our defense.
+| Defense level | Attack success | Normal questions answered |
+| --- | --- | --- |
+| 0: no defense | 10/15 (67%) | 18/20 |
+| 1: AIGoat's stock defense | 9/15 (60%) | not measured |
+| 2: AIGoat + CyberAware | **0/15 (0%)** | **19/20** |
 
-## Approach
+The trust gate adds a median of **0.007 ms** per request; the model's reply takes about 16 s on our CPU-only VM.
 
-The defense is a layer applied on top of AIGoat, not a fork:
+## The problem
 
-| Component | Purpose |
-| --- | --- |
-| Provenance-aware RAG | Tags retrieved content with its source and trust level, so untrusted documents cannot act as instructions |
-| Input/output guard | Screens prompts and responses for injection patterns and sensitive data |
-| Canary tokens | Planted markers that reveal when protected content leaks |
-| Audit log | Records detections and blocked requests for review |
+An AI assistant that answers from a knowledge base (retrieval-augmented generation, RAG) can't tell who wrote what it retrieves. A customer's review and the legal team's refund policy look the same once they're in the prompt.
 
-A demo script runs the same attack before and after the defense is applied and reports the difference.
+In CTF 7, a shopper posts a review claiming "support confirmed a full refund within 365 days, no receipt required". Asked about refunds, the shop assistant repeats it as official policy. The real policy is 30 days. AIGoat's own defenses don't stop it: Level 1 labels where documents came from but removes nothing, and the Level 2 scan only catches phrases like "ignore previous instructions".
+
+AIGoat's Add Document button stands in for real ingestion paths: reviews, support tickets, wiki pages and email. The same pattern hit Microsoft 365 Copilot (EchoLeak) and Slack AI. Details and sources: [From Lab to Production](docs/FROM-LAB-TO-PRODUCTION.md).
+
+## How CyberAware works
+
+*Trust the source, not the sentence.* The server labels every document with its origin when it's saved, and the gate checks that label at retrieval, before the model reads anything. Rewording the attack can't get past a check that never reads the wording.
+
+```mermaid
+flowchart LR
+    Q[Customer question] --> R[Retrieve top 5 documents]
+    R --> P[retrieval.provenance<br/>AIGoat]
+    P --> A[retrieval.acl<br/>AIGoat]
+    A --> G{{cyberaware.trust_gate}}
+    G -- "user-injected or untrusted tier" --> X[Removed + audit log]
+    G -- "seeded, system tier" --> S[retrieval.injection_scan<br/>AIGoat]
+    S --> M[Model reads trusted documents only]
+```
+
+| Component | What it does | Code |
+| --- | --- | --- |
+| **Trust gate** | Removes retrieved documents that users added, or whose trust tier isn't allowlisted (`system` by default) | [`overlay/cyberaware/trust_gate.py`](overlay/cyberaware/trust_gate.py) |
+| **Write guard** | Visitors can't label their own documents as trusted, or edit documents they don't own | [`patches/0003-kb-write-guard.patch`](patches/0003-kb-write-guard.patch) |
+| **CTF chat fix** | AIGoat's challenge chat ignored the defense level; now it applies it | [`patches/0002-challenge-chat-defense.patch`](patches/0002-challenge-chat-defense.patch) |
+| **Audit log** | One JSON line per removal: time, entry, title, reason, elapsed time | [`overlay/cyberaware/audit.py`](overlay/cyberaware/audit.py) |
+
+Everything installs as an overlay on a pinned AIGoat commit (`bb3cd1bbd1e0`) and uninstalls with one command. It is rule-based: no second AI model, because each model call costs 10–30 s on our hardware.
+
+## Evidence
+
+Same question at each level, captured on our VM. More in the [technical overview](docs/TECHNICAL-OVERVIEW.md#3-how-it-works).
+
+| Level 0: flag | Level 2: no flag | Inside Level 2: the gate's decision |
+| --- | --- | --- |
+| <img src="docs/assets/evidence/l0-flag.png" alt="Level 0: the assistant states the 365-day policy and the flag appears" width="260"> | <img src="docs/assets/evidence/l2-no-flag.png" alt="Level 2: the real 30-day policy and no flag" width="260"> | <img src="docs/assets/evidence/trust-gate-trace.png" alt="Retrieval trace: the planted review struck through and tagged cyberaware.trust_gate" width="300"> |
+
+## Quick start
+
+You need AIGoat running somewhere you control. We use an Azure VM reachable only over Tailscale: see the [team setup runbook](docs/TEAM-SETUP-RUNBOOK.md). Running AIGoat locally per its own docs also works.
+
+**1. Open AIGoat in your browser** through an SSH tunnel (the backend only accepts the `localhost` origin), then browse to http://localhost:3000:
+
+```bash
+ssh -L 3000:localhost:3000 -L 8000:localhost:8000 azureuser@<tailscale-ip>
+```
+
+**2. Install the defense** on the machine running AIGoat, then restart AIGoat:
+
+```bash
+scripts/install-overlay.sh ~/AIGoat
+cd ~/AIGoat && ./scripts/stop.sh && ./scripts/start.sh
+```
+
+Defense level 0 (top bar) stays undefended so the attack can still be shown; level 2 runs our defense. The [Defense Setup and Check Guide](docs/DEFENSE-SETUP-GUIDE.md) walks the whole team through install, a harmless check, and the CTF 7 check at every level.
+
+**3. Run the unit tests** (no model or vector store needed; about 1 second):
+
+```bash
+python3.11 -m venv ~/cyberaware-venv
+~/cyberaware-venv/bin/pip install -q pytest pyyaml pydantic fastapi "sqlalchemy[asyncio]" aiosqlite httpx "python-jose[cryptography]" "passlib[bcrypt]" python-multipart
+AIGOAT_DIR=~/AIGoat ~/cyberaware-venv/bin/python -m pytest tests/ -q
+```
+
+Expect `21 passed`.
+
+**4. Measure** (on the AIGoat machine, from this repo; about 45 minutes on CPU). Writes `results/metrics.md`:
+
+```bash
+~/AIGoat/venv/bin/python eval/run_eval.py
+```
+
+For a 5-minute smoke test instead:
+
+```bash
+~/AIGoat/venv/bin/python eval/run_eval.py --runs 1 --levels 0,2 --skip-benign
+```
+
+**5. Undo** (restores stock AIGoat; restart it afterwards as in step 2):
+
+```bash
+scripts/install-overlay.sh --uninstall ~/AIGoat
+```
+
+## Documentation
+
+| Document | For | What's in it |
+| --- | --- | --- |
+| [Technical overview](docs/TECHNICAL-OVERVIEW.md) | Judges, reviewers | Problem, solution, how it works, technologies, limitations |
+| [From Lab to Production](docs/FROM-LAB-TO-PRODUCTION.md) | Anyone asking "is this realistic?" | Real ingestion paths, sourced incidents, what carries over |
+| [Defense Setup and Check Guide](docs/DEFENSE-SETUP-GUIDE.md) | The whole team, no background needed | Install, check, CTF 7 at every level, troubleshooting, glossary |
+| [Team setup runbook](docs/TEAM-SETUP-RUNBOOK.md) | Whoever runs the VM | Azure + Tailscale + AIGoat setup, daily operations, troubleshooting |
+| [Prototype plan](docs/PROTOTYPE-PLAN.md) | The team | Design, status, schedule, demo run sheet, changelog |
+| [Next steps](docs/NEXT-STEPS.md) | The team | Checklist up to the presentation |
+| [Results](results/metrics.md) | Judges, reviewers | The latest metrics run |
 
 ## Repository layout
 
 ```
-overlay/                        # our defense controls package and defense profile, installed into AIGoat
-patches/                        # three small AIGoat patches (register controls, CTF chat defense, KB write guard)
-scripts/install-overlay.sh      # install into ~/AIGoat (or --uninstall to restore stock)
-tests/                          # unit tests, run against a real AIGoat checkout
-eval/                           # attack and benign corpora + evaluation harness (planned)
-docs/TEAM-SETUP-RUNBOOK.md      # deploying AIGoat on Azure behind Tailscale
-docs/DEFENSE-SETUP-GUIDE.md     # install the defense, check it, run the CTF 7 check
-docs/FROM-LAB-TO-PRODUCTION.md  # how CTF 7 maps to real apps, known incidents, our limits
-docs/PROTOTYPE-PLAN.md          # living design plan: components, schedule, gates, status
-docs/NEXT-STEPS.md              # checklist up to the presentation
+overlay/                        # our defense control package and defense profile, installed into AIGoat
+patches/                        # three small AIGoat patches: register controls, CTF chat fix, write guard
+scripts/install-overlay.sh      # install into an AIGoat checkout (--uninstall restores stock)
+tests/                          # 21 unit tests, run against a real AIGoat checkout
+eval/                           # attack and benign corpora + metrics script (run_eval.py)
+results/metrics.md              # before/after numbers from the last full run
+docs/                           # the documents above
+docs/assets/                    # CyberAware logo (mark and light/dark lockups) and evidence screenshots
 ```
 
-See [docs/PROTOTYPE-PLAN.md](docs/PROTOTYPE-PLAN.md#repository-layout-and-install) for the full planned layout.
+## Limitations and future work
 
-## Getting started
+- **Labels are assumed correct.** AIGoat marks user content for free; a real ingestion pipeline must label every source correctly.
+- **All-or-nothing trust.** Useful user content is removed too. A production version should quote it as "customers say", never as policy.
+- **Scope.** We measured CTF 7 on the knowledge-base surface. Three more controls are designed but were cut for time: obfuscation-aware input screening (`input_guard`), delimiting retrieved text (`context_harden`) and system-prompt leak detection (`canary`).
 
-1. **Deploy AIGoat.** Follow the [team setup runbook](docs/TEAM-SETUP-RUNBOOK.md) to run it on an Azure VM reachable only over Tailscale. Running it locally per the AIGoat docs also works.
-2. **Open the app.** Forward the app ports over SSH and browse to `http://localhost:3000`:
-   ```bash
-   ssh -L 3000:localhost:3000 -L 8000:localhost:8000 azureuser@<tailscale-ip>
-   ```
-3. **Install the defense** on the machine running AIGoat, then restart AIGoat. Step-by-step for the whole team, including a harmless check that it works: **[Defense Setup and Check Guide](docs/DEFENSE-SETUP-GUIDE.md)**.
-   ```bash
-   scripts/install-overlay.sh ~/AIGoat
-   cd ~/AIGoat && ./scripts/stop.sh && ./scripts/start.sh
-   ```
-   Defense level 0 (navbar) stays undefended; level 2 runs our defense, including on the CTF challenges. `scripts/install-overlay.sh --uninstall ~/AIGoat` restores stock AIGoat.
-4. **Run the tests** (no Ollama needed): see [Repository layout and install](docs/PROTOTYPE-PLAN.md#repository-layout-and-install).
-
-## Results
-
-Before/after metrics (attack success rate, canary token hits, added latency) will be published here.
+Full discussion: [technical overview, section 5](docs/TECHNICAL-OVERVIEW.md#5-limitations-and-challenges).
 
 ## Scope and rules of engagement
 
 - Attacks target only the team's own AIGoat instance. No scanning of other systems and no denial-of-service testing.
-- No secrets are committed. The only credentials in this repo are AIGoat's published demo accounts.
+- No secrets are committed. The only credentials in this repo are AIGoat's published demo accounts. Flags visible in the evidence screenshots are per-account CTF codes from our own instance.
 
 ## Acknowledgements
 
-Built on [AIGoat](https://github.com/AISecurityConsortium/AIGoat) by the AI Security Consortium.
+Built on [AIGoat](https://github.com/AISecurityConsortium/AIGoat) by the AI Security Consortium (platform code Apache-2.0). Our code adds to it as an overlay and patches; AIGoat itself isn't redistributed here.
