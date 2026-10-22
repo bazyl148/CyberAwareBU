@@ -16,12 +16,23 @@ Plan for getting from a working AIGoat environment to a rehearsed demo for the A
 
 ## 1. Wed Oct 21, tonight
 
-- [x] **Level 2 evidence** (audit lines for `charlie` recorded by the metrics run; screenshots still wanted): as `charlie` at Level 2, ask the CTF 7 question and confirm a `cyberaware.trust_gate` line naming the review appears in `~/AIGoat/logs/cyberaware-audit.jsonl`. Screenshot the Retrieval trace and the audit line.
-- [ ] **Run AIGoat in tmux** on the VM so it survives SSH drops ([runbook: Quick start](TEAM-SETUP-RUNBOOK.md#quick-start)).
+- [x] **Level 2 evidence:** the Retrieval trace shows the review removed by `cyberaware.trust_gate`, and the audit log records it for `charlie`. Screenshots are in [`docs/assets/evidence/`](assets/evidence/).
+- [ ] **Run AIGoat in tmux** on the VM so it survives SSH drops ([runbook: Quick start](TEAM-SETUP-RUNBOOK.md#quick-start)):
+
+  ```bash
+  tmux new -s aigoat          # or: tmux attach -t aigoat
+  cd ~/AIGoat && ./scripts/stop.sh && ./scripts/start.sh
+  ```
+
+  Then press **Ctrl+b**, then **d**, to leave it running.
 
 ## 2. Thu Oct 22, morning (feature freeze at 12:00)
 
-- [x] **Metrics:** full run done Oct 22 02:15 UTC; `results/metrics.md` in the repo (re-run after any change: about 45 minutes).
+- [x] **Metrics:** full run done Oct 22 02:15 UTC; [`results/metrics.md`](../results/metrics.md) is in the repo. Re-run after any change (about 45 minutes, on the VM):
+
+  ```bash
+  cd ~/CyberAwareBU && ~/AIGoat/venv/bin/python eval/run_eval.py
+  ```
 - [ ] **Hotspot test:** the venue network is restricted. On the phone hotspot: Tailscale up, SSH tunnel, log in at http://localhost:3000, one chat reply. If SSH hangs, apply the [MTU fix](TEAM-SETUP-RUNBOOK.md#ssh-hangs-but-ping-works).
 - [ ] **Ask the organizers** where and by when to submit the repo and technical overview.
 - [ ] **Review** the [technical overview](TECHNICAL-OVERVIEW.md), README and slides.

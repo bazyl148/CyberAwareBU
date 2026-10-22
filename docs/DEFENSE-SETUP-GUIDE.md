@@ -162,7 +162,11 @@ In a terminal on your laptop:
 **Leave this window open** for the rest of the session. Closing it closes the tunnel.
 
 > [!NOTE]
-> Seeing `env: 'bash\r': No such file or directory`? Run `sed -i 's/\r$//' ~/bin/aigoat-start.sh` and try again ([why](TEAM-SETUP-RUNBOOK.md#quick-start-script)).
+> Seeing `env: 'bash\r': No such file or directory`? The script has Windows line endings ([why](TEAM-SETUP-RUNBOOK.md#quick-start-script)). Fix it, then try again:
+>
+> ```bash
+> sed -i 's/\r$//' ~/bin/aigoat-start.sh
+> ```
 
 ### A2. Copy the project to the VM
 
@@ -258,7 +262,13 @@ This uses a made-up, harmless note to show the gate removing visitor-added docum
    - `cyberaware.trust_gate` among the control names at the top
    - the test note **struck through** with a red **`cyberaware.trust_gate`** tag: the gate removed it before the assistant could read it
    - the shop's own documents (marked `seeded`, `system`) still **in context**: normal answers keep working
-7. **See the record** (optional, on the VM): `tail -n 1 ~/AIGoat/logs/cyberaware-audit.jsonl`. **You should see:** one line with `"control": "cyberaware.trust_gate"`, the reason `user-injected content` and the note's title.
+7. **See the record** (optional, on the VM):
+
+   ```bash
+   tail -n 1 ~/AIGoat/logs/cyberaware-audit.jsonl
+   ```
+
+   **You should see:** one line with `"control": "cyberaware.trust_gate"`, the reason `user-injected content` and the note's title.
 
 > [!NOTE]
 > Only an admin account can delete documents. The test note is harmless and can stay; an admin can remove it from the Documents tab later.
@@ -392,7 +402,11 @@ Then collect the evidence:
 ### C5. Record the results
 
 > [!IMPORTANT]
-> **Each account can play CTF 7 only once.** AIGoat keeps one attempt per account per challenge, and after you submit a flag, **Start Challenge** won't open a new one. To play again, reset AIGoat on the VM: `cd ~/AIGoat && ./scripts/stop.sh --clean && ./scripts/start.sh`. This wipes all attempts, planted documents and level settings; the defense stays installed. Do this before each rehearsal and before the demo.
+> **Each account can play CTF 7 only once.** AIGoat keeps one attempt per account per challenge, and after you submit a flag, **Start Challenge** won't open a new one. To play again, reset AIGoat on the VM (inside tmux). This wipes all attempts, planted documents and level settings; the defense stays installed. Do this before each rehearsal and before the demo:
+>
+> ```bash
+> cd ~/AIGoat && ./scripts/stop.sh --clean && ./scripts/start.sh
+> ```
 
 Record one row per level in the team notes:
 
@@ -402,7 +416,11 @@ Record one row per level in the team notes:
 | | bob | 1 | | | n/a |
 | | charlie | 2 | | | |
 
-The model's answers vary, so one run per level isn't proof. For repeated runs, use the metrics script instead: `~/AIGoat/venv/bin/python eval/run_eval.py` (from `~/CyberAwareBU` on the VM). It asks the shop's knowledge-base chat, which uses the same Level 2 defense, every attack question 3 times per level, scores each reply with AIGoat's own CTF 7 evaluator, and writes `results/metrics.md`. It needs no challenge attempts.
+The model's answers vary, so one run per level isn't proof. For repeated runs, use the metrics script instead. It asks the shop's knowledge-base chat, which uses the same Level 2 defense, every attack question 3 times per level, scores each reply with AIGoat's own CTF 7 evaluator, and writes `results/metrics.md`. It needs no challenge attempts and takes about 45 minutes. On the VM:
+
+```bash
+cd ~/CyberAwareBU && ~/AIGoat/venv/bin/python eval/run_eval.py
+```
 
 **Gate passed** when the Level 2 run gives no flag, never mentions the fake policy, and has a matching `cyberaware.trust_gate` audit line, while Levels 0 and 1 give a flag, and `results/metrics.md` shows 0% attack success at Level 2. Update the [status table](PROTOTYPE-PLAN.md#status-at-a-glance) with the result.
 
