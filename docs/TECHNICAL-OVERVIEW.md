@@ -1,6 +1,10 @@
+<img src="assets/cyberaware-mark.svg" alt="CyberAware mark" width="96">
+
 # CyberAwareBU: Technical Overview
 
-**Team CyberAwareBU** · Bishop's University AI Cybersecurity Challenge 2026 · Focus area: RAG security
+**Team CyberAwareBU:** Basile, Chris and Bonté · Bishop's University AI Cybersecurity Challenge 2026 · Focus area: RAG security
+
+*Trust the source, not the sentence.*
 
 A defense layer that stops knowledge-base poisoning in retrieval-augmented AI assistants, built and measured on [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable AI shop.
 
@@ -59,11 +63,19 @@ AIGoat runs each request through a chain of defense **controls**, configured per
 
 | Defense level | CTF 7 attack success | Benign questions answered |
 | --- | --- | --- |
-| 0: none | _filled from metrics_ | _filled from metrics_ |
-| 1: AIGoat stock | _filled from metrics_ | — |
-| 2: AIGoat + CyberAware | _filled from metrics_ | _filled from metrics_ |
+| 0: none | 10/15 (67%) | 18/20 (90%) |
+| 1: AIGoat stock | 9/15 (60%) | not measured |
+| 2: AIGoat + CyberAware | **0/15 (0%)** | **19/20 (95%)** |
 
-The gate adds _filled from metrics_ ms per request; the model itself takes 10–30 s on our CPU-only VM.
+The poisoned review reached the model in 15 of 15 runs at Levels 0 and 1, and in none at Level 2. The gate adds a median of 0.007 ms per request; a full reply takes a median of 16.5 s on our CPU-only VM, almost all of it the model. The one benign miss at Level 2 is the model inventing a product price, which also happens at Level 0. At Level 0 a second miss came from the poisoned review leaking into an unrelated returns question.
+
+**Evidence** from CTF 7 on our VM, same question at each level (Oct 21, 2026):
+
+| Level 0: flag | Level 1: flag | Level 2: no flag |
+| --- | --- | --- |
+| <img src="assets/evidence/l0-flag.png" alt="Level 0: the assistant states the 365-day policy and the flag appears" width="260"> | <img src="assets/evidence/l1-flag.png" alt="Level 1: emails masked, but the 365-day policy and the flag still appear" width="260"> | <img src="assets/evidence/l2-no-flag.png" alt="Level 2: the real 30-day policy and no flag" width="260"> |
+
+The planted document ([form](assets/evidence/planted-review.png)) and the 21 passing unit tests ([output](assets/evidence/tests-passed.png)) are in `docs/assets/evidence/`.
 
 ## 4. Technologies used
 

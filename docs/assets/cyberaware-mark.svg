@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-112 -112 266 224" width="266" height="224" role="img" aria-label="CyberAware mark">
+  <!-- Construction: ring R104 r78, five chunks, 4° gaps, gate opening ±34° on the right,
+       core r22, three ejected chunks (the untrusted documents the gate removes). -->
+  <path fill="#0A1020" d="M86.22 -58.16A104 104 0 0 0 1.45 -103.99L1.09 -77.99A78 78 0 0 1 64.66 -43.62Z M-5.81 -103.84A104 104 0 0 0 -88.58 -54.49L-66.43 -40.87A78 78 0 0 1 -4.35 -77.88Z M-92.17 -48.18A104 104 0 0 0 -92.17 48.18L-69.12 36.14A78 78 0 0 1 -69.12 -36.14Z M-88.58 54.49A104 104 0 0 0 -5.81 103.84L-4.35 77.88A78 78 0 0 1 -66.43 40.87Z M1.45 103.99A104 104 0 0 0 86.22 58.16L64.66 43.62A78 78 0 0 1 1.09 77.99Z"/>
+  <circle cx="0" cy="0" r="22" fill="#B8650A"/>
+  <rect x="64" y="-14" width="28" height="28" fill="none" stroke="#7F95B2" stroke-width="3.5" stroke-dasharray="5 3.5"/>
+  <rect x="104" y="-25" width="18" height="18" fill="none" stroke="#7F95B2" stroke-width="3.5"/>
+  <rect x="135.5" y="10.5" width="11" height="11" fill="none" stroke="#7F95B2" stroke-width="3"/>
+</svg>

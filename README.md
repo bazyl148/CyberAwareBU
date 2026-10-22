@@ -1,4 +1,11 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cyberaware-lockup-dark.svg">
+  <img src="docs/assets/cyberaware-lockup-light.svg" alt="CyberAware: trust the source, not the sentence." width="560">
+</picture>
+
 # CyberAwareBU
+
+**Team:** Basile, Chris and Bonté · Bishop's University
 
 A defense layer for RAG-based LLM applications, built and demonstrated against [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable LLM app. Submitted to the AI Cybersecurity Challenge 2026.
 
@@ -34,6 +41,7 @@ scripts/install-overlay.sh      # install into ~/AIGoat (or --uninstall to resto
 tests/                          # unit tests, run against a real AIGoat checkout
 eval/                           # attack and benign corpora + metrics script (run_eval.py)
 results/metrics.md              # before/after numbers from the last full run
+docs/assets/                    # CyberAware logo: mark and light/dark lockups (SVG)
 docs/TECHNICAL-OVERVIEW.md      # problem, solution, how it works, technologies, limitations
 docs/TEAM-SETUP-RUNBOOK.md      # deploying AIGoat on Azure behind Tailscale
 docs/DEFENSE-SETUP-GUIDE.md     # install the defense, check it, run the CTF 7 check
@@ -62,7 +70,15 @@ See [docs/PROTOTYPE-PLAN.md](docs/PROTOTYPE-PLAN.md#repository-layout-and-instal
 
 ## Results
 
-Before/after metrics (attack success rate, canary token hits, added latency) will be published here.
+CTF 7, five phrasings asked three times per level, scored by AIGoat's own evaluator ([full results](results/metrics.md)):
+
+| Defense level | Attack success | Benign questions answered |
+| --- | --- | --- |
+| 0: none | 10/15 (67%) | 18/20 |
+| 1: AIGoat stock | 9/15 (60%) | not measured |
+| 2: AIGoat + CyberAware | **0/15 (0%)** | **19/20** |
+
+The trust gate adds a median of 0.007 ms per request.
 
 ## Scope and rules of engagement
 

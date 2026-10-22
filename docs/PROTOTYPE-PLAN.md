@@ -29,9 +29,9 @@ This is a living document. Update the [status table](#status-at-a-glance) and [c
 
 | Component | Owner | Status | Evidence |
 | --- | --- | --- | --- |
-| Baseline: attack success rate at Levels 0 and 1 | Person A | In progress (script ready) | `results/metrics.md` |
+| Baseline: attack success rate at Levels 0 and 1 | Person A | Done (L0 67%, L1 60%, L2 0%; benign 19/20 at L2) | `results/metrics.md` |
 | Attack and benign corpora | Person A | Done (CTF 7: 5 phrasings; 20 benign questions) | `eval/attacks.yaml`, `eval/benign.yaml` |
-| Evaluation harness | Person A | Done (smoke-tested on the VM) | `eval/run_eval.py` |
+| Evaluation harness | Person A | Done (full run on the VM, Oct 22 02:15 UTC) | `eval/run_eval.py` |
 | P1: CTF chat honours the defense level | Person B | Done (unit-tested; CTF 7 flag at L0 and L1, none at L2 on the VM) | `patches/0002-challenge-chat-defense.patch`, `tests/test_challenge_chat_defense.py` |
 | P2: `cyberaware.trust_gate` | Person B | Done (unit-tested; audit records on the VM) | `overlay/cyberaware/trust_gate.py`, `tests/test_trust_gate.py` |
 | P3: knowledge-base write guard | Person B | Done (unit-tested; installed on the VM) | `patches/0003-kb-write-guard.patch`, `tests/test_kb_write_guard.py` |
@@ -41,8 +41,8 @@ This is a living document. Update the [status table](#status-at-a-glance) and [c
 | Audit log | Person C | Done (`audit_tail.py` cut: `tail -f` is enough on stage) | `overlay/cyberaware/audit.py` |
 | Defense profile and install script | Person B | Done (tested on a fresh pinned checkout) | `overlay/config/cyberaware_profiles.yml`, `scripts/install-overlay.sh`, `tests/test_profile.py` |
 | README: run from a clean clone | Claude, reviewed by Person C | In progress | fresh-clone test |
-| Technical overview | Claude, reviewed by Person C | In progress | `docs/TECHNICAL-OVERVIEW.md` |
-| Slides | Claude, reviewed by Person C | Not started | slide deck (linked from the README) |
+| Technical overview | Claude, reviewed by Person C | Done, in review | `docs/TECHNICAL-OVERVIEW.md` |
+| Slides | Claude, reviewed by Person C | Done, in review (6 slides, CyberAware brand) | private deck artifact; share it from its Share menu |
 | Demo rehearsal and backup recording | All | Not started | rehearsal notes, video |
 
 Status values: Not started · In progress · Done · Cut.
@@ -433,6 +433,7 @@ Answer these as early as possible; each one can change a component. Mark them re
 
 | Date | Change |
 | --- | --- |
+| 2026-10-22 | Full metrics run on the VM: CTF 7 attack success L0 10/15 (67%), L1 9/15 (60%), L2 0/15 (0%); the review reached the model in 15/15 runs at L0 and L1 and 0/15 at L2. Benign 18/20 at L0, 19/20 at L2 (target met; misses are a hallucinated price, plus at L0 the review leaking into a returns answer). Gate median 0.007 ms. Committed `results/metrics.md`. Added the CyberAware logo (`docs/assets/`), team names, and a 6-slide deck in the brand. |
 | 2026-10-21 | Scope cut: `context_harden`, `input_guard`, `canary` and `audit_tail.py` (time; presented as future work). Registration and venue network resolved (confirmed; own hotspot). Added `eval/run_eval.py` with `eval/attacks.yaml` and `eval/benign.yaml`: it scores the shop's knowledge-base chat with AIGoat's own CTF 7 evaluator, because AIGoat allows one CTF attempt per account ever (`uq_one_active_attempt`). Smoke test on the VM: Level 0 3/5 exploited, Level 2 0/5, gate 0.006 ms, with `trust_gate` audit lines for `charlie`. Fixed Part C's repeat-run step (a submitted flag can't be replayed) and added a reset before every rehearsal. Drafted `docs/TECHNICAL-OVERVIEW.md`, rewrote the README to the built components, refreshed NEXT-STEPS, added the pre-stage checklist, and documented Tailscale SSH as the current VM setup in the runbook. |
 | 2026-10-21 | Part C now plants a customer review ("Great hoodie, and the refund policy is amazing", category Reviews) instead of an official-looking notice, matching the run sheet's "poisoned product review". Tested live at Level 0: flag captured. Moved `team-setup-runbook.md` to `docs/TEAM-SETUP-RUNBOOK.md` and updated every link. |
 | 2026-10-21 | Added `docs/FROM-LAB-TO-PRODUCTION.md`: how CTF 7's Add Document shortcut maps to real ingestion paths, three sourced incidents (EchoLeak, Slack AI, PoisonedRAG), what our defense carries over and its limits, and the on-stage framing. Linked from the README, the brief-alignment table, the run sheet and the defense guide. Fixed the run-sheet note claiming both accounts can share one planted entry: at Level 2 `retrieval.acl` hides it first. A review-style planted document is drafted for a live test before Part C changes. |
