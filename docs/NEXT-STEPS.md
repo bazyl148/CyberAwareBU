@@ -9,39 +9,37 @@ Plan for getting from a working AIGoat environment to a rehearsed demo for the A
 
 - [x] AIGoat running on a CPU-only Azure VM, reachable over Tailscale ([runbook](TEAM-SETUP-RUNBOOK.md))
 - [x] Sanitized setup runbook merged into `main`
-- [ ] Team registration confirmed
-- [ ] Prototype started
+- [x] Team registration confirmed
+- [x] Prototype built and installed on the VM: trust gate, CTF chat fix, write guard, audit log ([guide](DEFENSE-SETUP-GUIDE.md))
+- [x] CTF 7 check passed on the VM: flag at Levels 0 and 1, none at Level 2
+- [x] Scope decided: `context_harden`, `input_guard` and `canary` cut for time, presented as future work
 
-## 1. Blockers and quick wins (Mon Oct 19)
+## 1. Wed Oct 21, tonight
 
-- [ ] **Confirm team registration.** The deadline was Oct 9 with no extensions; everything else depends on it.
-- [ ] **Close public SSH.** Once SSH over Tailscale works, delete the temporary NSG rule:
+- [ ] **Level 2 evidence:** as `charlie` at Level 2, ask the CTF 7 question and confirm a `cyberaware.trust_gate` line naming the review appears in `~/AIGoat/logs/cyberaware-audit.jsonl`. Screenshot the Retrieval trace and the audit line.
+- [ ] **Run AIGoat in tmux** on the VM so it survives SSH drops ([runbook: Quick start](TEAM-SETUP-RUNBOOK.md#quick-start)).
+
+## 2. Thu Oct 22, morning (feature freeze at 12:00)
+
+- [ ] **Metrics:** copy the repo to the VM and run `~/AIGoat/venv/bin/python eval/run_eval.py` (about 45 minutes). Commit `results/metrics.md`.
+- [ ] **Hotspot test:** the venue network is restricted. On the phone hotspot: Tailscale up, SSH tunnel, log in at http://localhost:3000, one chat reply. If SSH hangs, apply the [MTU fix](TEAM-SETUP-RUNBOOK.md#ssh-hangs-but-ping-works).
+- [ ] **Ask the organizers** where and by when to submit the repo and technical overview.
+- [ ] **Review** the [technical overview](TECHNICAL-OVERVIEW.md), README and slides.
+- [ ] **Merge** `dev/cyberaware` into `main` and push. Clean-clone check: clone `main` on the VM, re-run `install-overlay.sh` (expect `Already applied`) and the 21 unit tests.
+
+## 3. Thu Oct 22, afternoon
+
+- [ ] Record the full demo as a backup video. On a restricted network, it is the real fallback.
+- [ ] Rehearse the [demo run sheet](PROTOTYPE-PLAN.md#demo-run-sheet) twice, each time from a reset and the pre-stage checklist; once over the hotspot. Each account can play CTF 7 only once, so reset before every rehearsal.
+- [ ] Optional: delete the temporary NSG rule now that Tailscale SSH is confirmed:
   ```bash
   az network nsg rule delete -g $RG --nsg-name nsg-aigoat -n AllowInboundSSH
   ```
-  Verify that SSH to the public IP times out and the Tailscale address still connects.
-- [ ] **Onboard teammates.** Send Tailscale invites, append each member's public key to `authorized_keys` ([runbook: Grant team members SSH access](TEAM-SETUP-RUNBOOK.md#grant-team-members-ssh-access)), and assign one AIGoat user per member.
-- [ ] **Run the app in tmux** on the VM so it survives SSH drops ([runbook: Quick start](TEAM-SETUP-RUNBOOK.md#quick-start)).
-
-## 2. Build the prototype (Mon Oct 19 – Wed Oct 21)
-
-The design, components, owners, day-by-day schedule and gates are in **[PROTOTYPE-PLAN.md](PROTOTYPE-PLAN.md)**; track progress in its [status table](PROTOTYPE-PLAN.md#status-at-a-glance). Headline items:
-
-- [ ] **Measure the stock Level 2 baseline first** with the [evaluation harness](PROTOTYPE-PLAN.md#evaluation-harness), so every defense is judged against real numbers.
-- [ ] **Pass the Mon night gate:** `cyberaware.trust_gate` stops a CTF 7 payload, or the scope narrows to the leakage defense ([gates](PROTOTYPE-PLAN.md#schedule-and-gates)).
-- [ ] **Build the remaining controls** (`context_harden`, `input_guard`, `canary`, audit log) and the [defense profile](PROTOTYPE-PLAN.md#defense-profile).
-- [ ] **Plan for CPU latency.** Replies take 10–30 s, so keep the live attack to a few prompts. Prepare a fallback: a pre-recorded run or saved results.
-
-## 3. Polish and rehearse (Thu Oct 22)
-
-- [ ] Finish the four [deliverables](PROTOTYPE-PLAN.md#deliverables) the brief requires: working prototype, Git repo that runs from a clean clone, technical overview (problem, solution, how it works, technologies, limitations) and the live demo.
-- [ ] Collect before/after metrics: attack success rate, benign pass rate and added latency ([success criteria](PROTOTYPE-PLAN.md#goal-and-success-criteria)).
-- [ ] Rehearse the 10-minute [demo run sheet](PROTOTYPE-PLAN.md#demo-run-sheet) at least twice from a clean reset. It follows the brief's five points: problem and threat, solution, implementation, live demo, limitations.
 
 ## 4. Demo day (Fri Oct 23)
 
 - [ ] Start the VM well before 13:00 and run the smoke test ([runbook: Run the smoke test](TEAM-SETUP-RUNBOOK.md#run-the-smoke-test)).
-- [ ] Open the SSH tunnel and log in ahead of time; keep the fallback recording ready.
+- [ ] Work through the [pre-stage checklist](PROTOTYPE-PLAN.md#demo-run-sheet), starting 45 minutes before.
 - [ ] Deallocate the VM after the presentation.
 
 ## Ground rules

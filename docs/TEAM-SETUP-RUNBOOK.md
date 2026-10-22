@@ -330,10 +330,13 @@ ssh azureuser@100.x.y.z
 If this fails with `Permission denied (publickey)`, see [SSH permission denied](#ssh-permission-denied).
 
 > [!IMPORTANT]
-> Keep **Tailscale SSH disabled**. This runbook uses standard key-based SSH; if `tailscale set --ssh` is enabled, Tailscale intercepts SSH and key authentication stops working. Disable it with:
+> **The team VM runs Tailscale SSH** (`tailscale set --ssh`). Tailscale answers on port 22 and logs you in by your tailnet identity, so no SSH key or `-i` flag is needed, and `authorized_keys` is not consulted. Access is granted by adding the person to the tailnet (and its SSH policy), not by adding their key.
+>
+> To go back to standard key-based SSH instead, turn it off:
 > ```bash
 > az vm run-command invoke -g $RG -n $VM --command-id RunShellScript --scripts "tailscale set --ssh=false"
 > ```
+> With it off, follow [Grant team members SSH access](#grant-team-members-ssh-access) for keys.
 
 #### Remove public SSH access
 
@@ -719,7 +722,7 @@ The network path works but the VM rejected the key. Common causes: the client of
    mkdir -p ~/.ssh && cp <path>/id_ed25519 <path>/id_ed25519.pub ~/.ssh/ && chmod 600 ~/.ssh/id_ed25519
    ```
 
-5. Make sure Tailscale SSH is disabled (see [Test SSH over Tailscale](#test-ssh-over-tailscale)).
+5. Key errors only happen with Tailscale SSH off. If `ssh -v` shows `remote software version Tailscale`, keys aren't used at all; check the person is in the tailnet instead (see [Test SSH over Tailscale](#test-ssh-over-tailscale)).
 
 To see which keys SSH offers and what the server accepts:
 

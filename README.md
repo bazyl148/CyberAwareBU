@@ -2,7 +2,7 @@
 
 A defense layer for RAG-based LLM applications, built and demonstrated against [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable LLM app. Submitted to the AI Cybersecurity Challenge 2026.
 
-> **Status:** work in progress. The environment is set up and the prototype is under development. See the [prototype plan](docs/PROTOTYPE-PLAN.md#status-at-a-glance) for component status and [docs/NEXT-STEPS.md](docs/NEXT-STEPS.md) for the overall checklist.
+> **Status:** prototype complete and installed on the team VM; demo Fri Oct 23, 2026. Start with the **[technical overview](docs/TECHNICAL-OVERVIEW.md)**. Component status: [prototype plan](docs/PROTOTYPE-PLAN.md#status-at-a-glance).
 
 ## Problem
 
@@ -12,16 +12,18 @@ In AIGoat the attacker plants content through an Add Document button. In product
 
 ## Approach
 
-The defense is a layer applied on top of AIGoat, not a fork:
+The defense decides trust by **where a document came from, not by what it says**, and enforces it at retrieval, before the model reads anything. It's an overlay on AIGoat, not a fork:
 
 | Component | Purpose |
 | --- | --- |
-| Provenance-aware RAG | Tags retrieved content with its source and trust level, so untrusted documents cannot act as instructions |
-| Input/output guard | Screens prompts and responses for injection patterns and sensitive data |
-| Canary tokens | Planted markers that reveal when protected content leaks |
-| Audit log | Records detections and blocked requests for review |
+| Trust gate (`cyberaware.trust_gate`) | After retrieval, removes documents that users added or whose trust tier isn't allowlisted; the shop's own documents still reach the model |
+| CTF chat fix (patch P1) | Makes AIGoat's challenge chat apply the defense level, which stock AIGoat skips |
+| Write guard (patch P3) | Stops users from labelling their own documents as trusted or editing documents they don't own |
+| Audit log | Records every document the gate removed, with the reason |
 
-A demo script runs the same attack before and after the defense is applied and reports the difference.
+`eval/run_eval.py` runs the same attack at each defense level, scores every reply with AIGoat's own CTF 7 evaluator, and writes [results/metrics.md](results/metrics.md).
+
+**Future work** (designed, cut for time): obfuscation-aware input screening (`input_guard`), delimiting and cleaning retrieved text (`context_harden`) and system-prompt leak detection (`canary`). See [Limitations](docs/TECHNICAL-OVERVIEW.md#5-limitations-and-challenges).
 
 ## Repository layout
 
@@ -30,7 +32,9 @@ overlay/                        # our defense controls package and defense profi
 patches/                        # three small AIGoat patches (register controls, CTF chat defense, KB write guard)
 scripts/install-overlay.sh      # install into ~/AIGoat (or --uninstall to restore stock)
 tests/                          # unit tests, run against a real AIGoat checkout
-eval/                           # attack and benign corpora + evaluation harness (planned)
+eval/                           # attack and benign corpora + metrics script (run_eval.py)
+results/metrics.md              # before/after numbers from the last full run
+docs/TECHNICAL-OVERVIEW.md      # problem, solution, how it works, technologies, limitations
 docs/TEAM-SETUP-RUNBOOK.md      # deploying AIGoat on Azure behind Tailscale
 docs/DEFENSE-SETUP-GUIDE.md     # install the defense, check it, run the CTF 7 check
 docs/FROM-LAB-TO-PRODUCTION.md  # how CTF 7 maps to real apps, known incidents, our limits
@@ -54,6 +58,7 @@ See [docs/PROTOTYPE-PLAN.md](docs/PROTOTYPE-PLAN.md#repository-layout-and-instal
    ```
    Defense level 0 (navbar) stays undefended; level 2 runs our defense, including on the CTF challenges. `scripts/install-overlay.sh --uninstall ~/AIGoat` restores stock AIGoat.
 4. **Run the tests** (no Ollama needed): see [Repository layout and install](docs/PROTOTYPE-PLAN.md#repository-layout-and-install).
+5. **Measure** (on the VM, about 45 minutes on CPU): `~/AIGoat/venv/bin/python eval/run_eval.py`
 
 ## Results
 
