@@ -1,8 +1,8 @@
 <img src="assets/cyberaware-mark.svg" alt="CyberAware mark" width="96">
 
-# CyberAwareBU: Technical Overview
+# CyberAware: Technical Overview
 
-**Team CyberAwareBU:** Basile, Chris and Bonté · Bishop's University AI Cybersecurity Challenge 2026 · Focus area: RAG security
+**Team:** Basile, Chris and Bonté · Bishop's University AI Cybersecurity Challenge 2026 · Focus area: RAG security
 
 *Trust the source, not the sentence.*
 

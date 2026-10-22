@@ -1,6 +1,6 @@
 <img src="docs/assets/cyberaware-lockup-light.svg" alt="CyberAware: trust the source, not the sentence." width="560">
 
-</br>
+<br>
 
 **CyberAware is a RAG defense layer that stops knowledge-base poisoning in AI assistants.** Built and measured on [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable AI shop, presented at the Bishop's University AI Cybersecurity Challenge 2026.
 
