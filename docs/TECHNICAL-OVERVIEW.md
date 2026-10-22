@@ -6,7 +6,7 @@
 
 *Trust the source, not the sentence.*
 
-A defense layer that stops knowledge-base poisoning in retrieval-augmented AI assistants, built and measured on [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable AI shop.
+**CyberAware is a RAG defense layer that stops knowledge-base poisoning in AI assistants.** Built and measured on [AIGoat](https://github.com/AISecurityConsortium/AIGoat), an intentionally vulnerable AI shop.
 
 ---
 
