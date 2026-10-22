@@ -686,6 +686,7 @@ Then remove the `aigoat-azure` machine from the Tailscale admin console.
 | `lscpu` shows no `avx2` | Unsuitable VM size | Resize to a Dasv5 or Dsv5 size |
 | start.sh reports Ollama not reachable | Ollama service not running | `sudo systemctl status ollama`, then `sudo systemctl start ollama` |
 | SSH to `100.x.y.z` fails or times out | Client not on the tailnet, VM deallocated, or node key expired | [Join WSL to the tailnet](#join-a-wsl-workstation-to-the-tailnet); `az vm start`; check `tailscale status` and key expiry |
+| SSH to `100.x.y.z` hangs, but `tailscale status` shows the VM and `ping` works | WSL's MTU is too small for Tailscale, so large handshake packets are dropped | See [SSH hangs but ping works](#ssh-hangs-but-ping-works) |
 | `Permission denied (publickey)` | Wrong key offered, key not authorized, or Tailscale SSH enabled | See [SSH permission denied](#ssh-permission-denied) |
 | Pages load but login or chat fails | App opened via `100.x.y.z`; backend rejects that origin | Use the [SSH tunnel](#open-the-app-through-an-ssh-tunnel) and http://localhost:3000 |
 | "Invalid credentials" for every user | Wrong origin, or database not seeded | See [Login fails for every user](#login-fails-for-every-user) |
@@ -725,6 +726,38 @@ To see which keys SSH offers and what the server accepts:
 ```bash
 ssh -v azureuser@100.x.y.z 2>&1 | grep -E "Offering|Authentications|identity file"
 ```
+
+#### SSH hangs but ping works
+
+The tunnel is up, but SSH stalls during the handshake and never prompts or fails. `ssh -v` stops at `expecting SSH2_MSG_KEX_ECDH_REPLY`. This is not a firewall or public IP problem: traffic to `100.x.y.z` travels inside Tailscale, so the Azure NSG and your public IP play no part.
+
+**Cause.** WSL's network adapter (`eth0`) can come up with an MTU of 1280 bytes, the same as `tailscale0`. Tailscale adds about 80 bytes to every packet, so full-size tunnel packets no longer fit and are dropped. Pings are small and get through; the SSH key exchange reply is large and does not.
+
+1. Confirm it. Small pings succeed and large ones fail:
+
+   ```bash
+   ip link show eth0 | head -1                           # look for "mtu 1280"
+   ping -c1 -M do -s 1100 100.x.y.z                      # succeeds
+   ping -c1 -M do -s 1250 100.x.y.z                      # fails: packets this size are dropped
+   ```
+
+2. Fix it for the current session. The change is lost when WSL restarts:
+
+   ```bash
+   sudo ip link set dev tailscale0 mtu 1200
+   ```
+
+3. Make it permanent. Tailscale applies this MTU every time it starts:
+
+   ```bash
+   echo 'TS_DEBUG_MTU=1200' | sudo tee -a /etc/default/tailscaled
+   sudo systemctl restart tailscaled
+   ip link show tailscale0 | head -1                     # expect: mtu 1200
+   ```
+
+4. Test again: `ssh azureuser@100.x.y.z` should connect at once.
+
+If 1200 still fails, find the largest ping size that works (`-s 1180`, `-s 1150`, …), add 28, and use that as the MTU.
 
 #### Login fails for every user
 
