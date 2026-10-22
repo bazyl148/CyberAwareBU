@@ -71,7 +71,7 @@ Industry judges assess "how effectively your team identifies and addresses a rea
 | Focus area: RAG security | Trust-based exclusion and hardened context for retrieved content | [`trust_gate`](#p2-cyberawaretrust_gate), [`context_harden`](#cyberawarecontext_harden) |
 | Focus area: prompt injection | Obfuscation-aware input scoring; instruction phrases removed from retrieved text | [`input_guard`](#cyberawareinput_guard), [`context_harden`](#cyberawarecontext_harden) |
 | Focus area: sensitive information leakage | Canary detection of system-prompt leaks; stock card and email masking kept | [`canary`](#cyberawarecanary) |
-| A realistic problem | An e-commerce assistant that trusts user-submitted reviews and tips: planted content makes it state a fake refund policy as fact (OWASP LLM08 vector and embedding weaknesses, LLM01 prompt injection) | [The gap we close](#the-gap-we-close) |
+| A realistic problem | An e-commerce assistant that trusts user-submitted reviews and tips: planted content makes it state a fake refund policy as fact (OWASP LLM08 vector and embedding weaknesses, LLM01 prompt injection) | [From Lab to Production](FROM-LAB-TO-PRODUCTION.md), [The gap we close](#the-gap-we-close) |
 | "Think like both an attacker and a defender" | Attack corpus built from CTF and lab payloads, plus a stock L2 baseline measured before any defense | [Evaluation harness](#evaluation-harness) |
 | Show how the solution "detects, prevents, mitigates, or responds" | **Prevents:** `trust_gate`, `input_guard` · **Mitigates:** `context_harden`, `output.moderate` · **Detects:** `canary`, audit log · **Responds:** refusal message plus an audit record with the reason | [Components](#components) |
 
@@ -364,16 +364,16 @@ The 10 minutes follow the five points the brief lists, in its order, with the li
 
 | Time | Brief point | Content | Action |
 | --- | --- | --- | --- |
-| 0:00–1:00 | 1. Problem and threat | A poisoned product review makes the shop assistant state a fake refund policy as fact; why this is realistic for any RAG app that indexes user content | One slide or none |
+| 0:00–1:00 | 1. Problem and threat | A poisoned product review makes the shop assistant state a fake refund policy as fact; why this is realistic for any RAG app that indexes user content ([talk track and sources](FROM-LAB-TO-PRODUCTION.md#on-stage)) | One slide or none |
 | 1:00–2:00 | 2. Proposed solution | Trust-aware retrieval, hardened context, input and output guards, audit log | The [architecture diagram](#architecture) (slide 1) |
 | 2:00–2:45 | 3. Implementation | Python controls on AIGoat's defense-control framework, a YAML profile, a rule-based design (no extra LLM call, so no added 10–30 s), and the eval harness | One sentence per layer, same slide |
 | 2:45–4:45 | 4. Live demo: attack | Defense level 0: CTF 7 in the CTF UI; the bot repeats the planted "policy" as official and the flag appears | Live, browser at `localhost:3000` |
 | 4:45–6:45 | 4. Live demo: defense | Switch to an account at defense level 2 (navbar), same question: the bot answers from trusted data, no flag; the audit log shows the `trust_gate` exclusion and reason | Live, second terminal with the audit log |
 | 6:45–7:45 | 4. Live demo: functionality kept | Two normal shopping questions answered correctly; `results/metrics.md` shows attack success rate, benign pass rate and added latency | Live, then slide 2 (metrics) |
-| 7:45–9:15 | 5. Limitations and future work | Rule-based detection can be paraphrased around; one trust model for all content; trusted content can only be curated by staff; next: per-source trust scoring, an LLM judge on a GPU | Slide 3 |
+| 7:45–9:15 | 5. Limitations and future work | Rule-based detection can be paraphrased around; one trust model for all content; trusted content can only be curated by staff; trust labels assumed correct at ingestion; all-or-nothing trust for user content ([details](FROM-LAB-TO-PRODUCTION.md#what-doesnt-carry-over)); next: per-source trust scoring, an LLM judge on a GPU | Slide 3 |
 | 9:15–10:00 | — | Buffer and questions | — |
 
-A flag, once won, stays visible for the rest of that challenge attempt, so use one account for the Level 0 attack and a different account at Level 2 for the defense. The knowledge base is shared, so both accounts face the same planted entry.
+A flag, once won, stays visible for the rest of that challenge attempt, so use one account for the Level 0 attack and a different account at Level 2 for the defense. Each account plants its own entry: at Level 2, AIGoat's `retrieval.acl` already hides other accounts' entries, so a shared entry would be blocked before our gate is reached (see [Part C](DEFENSE-SETUP-GUIDE.md#part-c-the-ctf-7-check-person-a)).
 
 Warm the model with one throwaway prompt before going on stage. Replies take 10–30 s on CPU, so narrate the architecture while waiting. If the network fails, switch to the backup recording at the same point in the timeline.
 
@@ -424,6 +424,9 @@ Answer these as early as possible; each one can change a component. Mark them re
 
 | Date | Change |
 | --- | --- |
+| 2026-10-21 | Part C now plants a customer review ("Great hoodie, and the refund policy is amazing", category Reviews) instead of an official-looking notice, matching the run sheet's "poisoned product review". Tested live at Level 0: flag captured. Moved `team-setup-runbook.md` to `docs/TEAM-SETUP-RUNBOOK.md` and updated every link. |
+| 2026-10-21 | Added `docs/FROM-LAB-TO-PRODUCTION.md`: how CTF 7's Add Document shortcut maps to real ingestion paths, three sourced incidents (EchoLeak, Slack AI, PoisonedRAG), what our defense carries over and its limits, and the on-stage framing. Linked from the README, the brief-alignment table, the run sheet and the defense guide. Fixed the run-sheet note claiming both accounts can share one planted entry: at Level 2 `retrieval.acl` hides it first. A review-style planted document is drafted for a live test before Part C changes. |
+| 2026-10-21 | Rewrote Part C of the defense guide as a step-by-step CTF 7 run at Levels 0, 1 and 2: exact poisoned document, question and backup questions, one account per level, flag capture, evidence and a results table. Written from AIGoat's evaluator and challenge chat code; not yet run live (the overlay isn't installed on the VM yet). Added the WSL/Tailscale MTU fix for SSH hangs to the runbook troubleshooting. |
 | 2026-10-19 | Added `docs/DEFENSE-SETUP-GUIDE.md`: plain-language install, harmless check and CTF 7 gate steps for the whole team. Corrected the profile-validation note: profiles load on the first Level 1 or 2 request, not at startup. Added `.gitattributes` to keep shell scripts and patches on Unix line endings. |
 | 2026-10-19 | Built P1 (CTF chat honours the defense level), P2 (`cyberaware.trust_gate`), P3 (KB write guard), the audit helper, our profile and `install-overlay.sh`. 21 unit tests pass against AIGoat `bb3cd1bbd1e0`. The demo toggle moves from a backend restart to the per-user navbar level. Found and closed two extra gaps: CTF chat ignored all defenses; any user could edit trusted entries. VM verification is pending. |
 | 2026-10-19 | Aligned with the official challenge brief: added the brief-alignment table and the Deliverables section, reordered the demo run sheet to the brief's five presentation points, split the docs work into separate status rows, and added four open questions (registration, submission method, overview format, venue network). |

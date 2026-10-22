@@ -8,6 +8,8 @@ A defense layer for RAG-based LLM applications, built and demonstrated against [
 
 LLM apps that use retrieval-augmented generation (RAG) trust whatever lands in their knowledge base. An attacker who can plant content there, or slip instructions into a prompt, can steer the model into leaking data or ignoring its guardrails.
 
+In AIGoat the attacker plants content through an Add Document button. In production they never need one: they write a review, support ticket, wiki page or email that the company's own pipeline indexes. See [From Lab to Production](docs/FROM-LAB-TO-PRODUCTION.md) for real paths, known incidents and the limits of our defense.
+
 ## Approach
 
 The defense is a layer applied on top of AIGoat, not a fork:
@@ -24,21 +26,23 @@ A demo script runs the same attack before and after the defense is applied and r
 ## Repository layout
 
 ```
-overlay/                 # our defense controls package and defense profile, installed into AIGoat
-patches/                 # three small AIGoat patches (register controls, CTF chat defense, KB write guard)
-scripts/install-overlay.sh  # install into ~/AIGoat (or --uninstall to restore stock)
-tests/                   # unit tests, run against a real AIGoat checkout
-eval/                    # attack and benign corpora + evaluation harness (planned)
-docs/PROTOTYPE-PLAN.md   # living design plan: components, schedule, gates, status
-docs/NEXT-STEPS.md       # checklist up to the presentation
-team-setup-runbook.md    # deploying AIGoat on Azure behind Tailscale
+overlay/                        # our defense controls package and defense profile, installed into AIGoat
+patches/                        # three small AIGoat patches (register controls, CTF chat defense, KB write guard)
+scripts/install-overlay.sh      # install into ~/AIGoat (or --uninstall to restore stock)
+tests/                          # unit tests, run against a real AIGoat checkout
+eval/                           # attack and benign corpora + evaluation harness (planned)
+docs/TEAM-SETUP-RUNBOOK.md      # deploying AIGoat on Azure behind Tailscale
+docs/DEFENSE-SETUP-GUIDE.md     # install the defense, check it, run the CTF 7 check
+docs/FROM-LAB-TO-PRODUCTION.md  # how CTF 7 maps to real apps, known incidents, our limits
+docs/PROTOTYPE-PLAN.md          # living design plan: components, schedule, gates, status
+docs/NEXT-STEPS.md              # checklist up to the presentation
 ```
 
 See [docs/PROTOTYPE-PLAN.md](docs/PROTOTYPE-PLAN.md#repository-layout-and-install) for the full planned layout.
 
 ## Getting started
 
-1. **Deploy AIGoat.** Follow [team-setup-runbook.md](team-setup-runbook.md) to run it on an Azure VM reachable only over Tailscale. Running it locally per the AIGoat docs also works.
+1. **Deploy AIGoat.** Follow the [team setup runbook](docs/TEAM-SETUP-RUNBOOK.md) to run it on an Azure VM reachable only over Tailscale. Running it locally per the AIGoat docs also works.
 2. **Open the app.** Forward the app ports over SSH and browse to `http://localhost:3000`:
    ```bash
    ssh -L 3000:localhost:3000 -L 8000:localhost:8000 azureuser@<tailscale-ip>
